@@ -1,0 +1,4 @@
+providers = ["php"]
+
+[variables]
+NIXPACKS_PHP_VERSION = "8.4"
