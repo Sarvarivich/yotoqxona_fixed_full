@@ -1,0 +1,33 @@
+# Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Firebase secrets
+*-firebase-adminsdk-*.json
+firebase-adminsdk*.json
+
+# Environment secrets
+.env
+.env.*
+
+# Laravel
+backend_repo/vendor/
+backend_repo/.env
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+.temp_patch_note.txt
+*.log

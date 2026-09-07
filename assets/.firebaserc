@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "yotoqxona-fe7ab"
+  },
+  "targets": {
+    "yotoqxona-fe7ab": {
+      "hosting": {
+        "kuhostel": [
+          "kuhostel"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

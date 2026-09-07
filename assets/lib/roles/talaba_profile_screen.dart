@@ -1,0 +1,1810 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../modules/models/user_model.dart';
+import '../modules/models/room_model.dart';
+import '../modules/services/auth_service.dart';
+import '../auth/login.dart';
+import 'talaba_tolovlar_screen.dart';
+import '../modules/bildirishnoma/bildirishnomalar_list.dart';
+import '../modules/murojaat/murojaatlar_list.dart';
+
+// ─── Colors ────────────────────────────────────────────────────
+class _C {
+  static const bgBase = Color(0xFF0F0D1A);
+  static const bgCard = Color(0xFF1E1B2E);
+  static const purple = Color(0xFF6C5CE7);
+  static const violet = Color(0xFFa29bfe);
+  static const teal = Color(0xFF00CEC9);
+  static const mint = Color(0xFF55EFC4);
+  static const pink = Color(0xFFfd79a8);
+  static const orange = Color(0xFFfdcb6e);
+  static const coral = Color(0xFFe17055);
+  static const white = Color(0xFFFFFFFF);
+  static const soft = Color(0xB3FFFFFF);
+  static const muted = Color(0x66FFFFFF);
+  static const faint = Color(0x0FFFFFFF);
+}
+
+// ─── Screen (shell with 4 working tabs) ─────────────────────────
+class TalabaProfileScreen extends StatefulWidget {
+  final UserModel user;
+
+  const TalabaProfileScreen({super.key, required this.user});
+
+  @override
+  State<TalabaProfileScreen> createState() => _TalabaProfileScreenState();
+}
+
+class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
+  int _tab = 0;
+  late UserModel _user;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _user = widget.user;
+  }
+
+  void _goTo(int index) => setState(() => _tab = index);
+
+  // Faqat Drawer ichidan chaqiriladi: avval menyuni yopadi, keyin tabni
+  // almashtiradi. _goTo dan alohida, chunki _goTo "Bosh" sahifadagi tezkor
+  // tugmalar (Yotoqxona/To'lovlar/Murojaat) tomonidan ham chaqiriladi va u
+  // yerda Navigator.pop() chaqirish ekranni ortga qaytarib yuborishi mumkin edi.
+  void _selectFromDrawer(int index) {
+    Navigator.of(context).maybePop(); // drawer ochiq bo'lsa yopish
+    setState(() => _tab = index);
+  }
+
+  void _onUserUpdated(UserModel updated) => setState(() => _user = updated);
+
+  Future<void> _openEditProfile(BuildContext context) async {
+    final updated = await showModalBottomSheet<UserModel>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditProfileSheet(user: _user),
+    );
+    if (updated != null) {
+      _onUserUpdated(updated);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarBrightness: Brightness.dark,
+      statusBarColor: Colors.transparent,
+    ));
+
+    final user = _user;
+    final roleLabel = switch (user.role) {
+      UserRole.superAdmin => 'SUPER ADMIN',
+      UserRole.admin => 'ADMIN',
+      UserRole.mudir => 'MUDIR',
+      UserRole.moliyachi => 'MOLIYACHI',
+      UserRole.talaba => 'TALABA',
+    };
+
+    final pages = [
+      _BoshTab(
+        user: user,
+        roleLabel: roleLabel,
+        onOpenTab: _goTo,
+        onEditProfile: () => _openEditProfile(context),
+      ),
+      _YotoqxonaTab(user: user),
+      TalabaTolovlarScreen(user: user),
+      _ProfilTab(
+        user: user,
+        roleLabel: roleLabel,
+        onEditProfile: () => _openEditProfile(context),
+      ),
+      // Talaba yotoqxona mudiriga yoki administratorga murojaat yuborishi
+      // va yuborgan murojaatlarini kuzatib borishi uchun bo'lim
+      MurojaatlarList(
+        isAdmin: false,
+        hostel: user.hostel ?? 'boys',
+        studentId: user.id,
+        studentName: user.fullName,
+      ),
+    ];
+
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: _C.bgBase,
+      drawer: _TalabaDrawer(
+        userName: user.fullName.isNotEmpty ? user.fullName : 'Talaba',
+        userEmail: user.email,
+        selected: _tab,
+        onSelect: _selectFromDrawer,
+      ),
+      // Standart Flutter AppBar ishlatilyapti — "drawer" berilgan bo'lsa,
+      // Flutter menyu (hamburger) belgisini AVTOMATIK qo'shadi va uni bosish
+      // kafolatlangan holda ishlaydi. Bu sahifalarning o'z sarlavhalari bilan
+      // ustma-ust tushib qolish muammosini butunlay yo'q qiladi, chunki
+      // Scaffold "body"ni AppBar balandligiga qarab avtomatik pastga suradi.
+      appBar: AppBar(
+        backgroundColor: _C.bgBase,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: _C.white),
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarBrightness: Brightness.dark,
+          statusBarIconBrightness: Brightness.light,
+        ),
+      ),
+      // Sahifalar endi to'liq ekranni egallaydi — eski pastki navbar olib
+      // tashlandi, chunki u har bir sahifaning o'z FloatingActionButton
+      // tugmasini (masalan "Murojaat yozish") yashirib qo'yayotgan edi.
+      body: IndexedStack(index: _tab, children: pages),
+    );
+  }
+}
+
+// ─── Talaba uchun yon menyu (Drawer) ────────────────────────────
+class _TalabaDrawer extends StatelessWidget {
+  final String userName;
+  final String userEmail;
+  final int selected;
+  final void Function(int) onSelect;
+
+  const _TalabaDrawer({
+    required this.userName,
+    required this.userEmail,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (Icons.home_rounded, 'Bosh'),
+      (Icons.apartment_rounded, 'Yotoqxona'),
+      (Icons.receipt_long_rounded, "To'lovlar"),
+      (Icons.person_rounded, 'Profil'),
+      (Icons.forum_rounded, 'Murojaat'),
+    ];
+
+    return Drawer(
+      backgroundColor: _C.bgCard,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: _C.purple.withOpacity(0.25),
+                    child: Text(
+                      userName.isNotEmpty ? userName[0].toUpperCase() : 'T',
+                      style: const TextStyle(
+                        color: _C.violet,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          userName,
+                          style: const TextStyle(
+                            color: _C.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (userEmail.isNotEmpty)
+                          Text(
+                            userEmail,
+                            style: TextStyle(
+                              color: _C.white.withOpacity(0.5),
+                              fontSize: 12,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(color: _C.white.withOpacity(0.08), height: 1),
+            const SizedBox(height: 8),
+            ...items.asMap().entries.map((e) {
+              final i = e.key;
+              final item = e.value;
+              final active = i == selected;
+              return Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                child: Material(
+                  color:
+                      active ? _C.purple.withOpacity(0.16) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    leading: Icon(
+                      item.$1,
+                      color: active ? _C.violet : _C.muted,
+                    ),
+                    title: Text(
+                      item.$2,
+                      style: TextStyle(
+                        color: active ? _C.violet : _C.white,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 14,
+                      ),
+                    ),
+                    onTap: () => onSelect(i),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── "Bosh" (Home) tab ───────────────────────────────────────────
+class _BoshTab extends StatelessWidget {
+  final UserModel user;
+  final String roleLabel;
+  final void Function(int) onOpenTab;
+  final VoidCallback onEditProfile;
+
+  const _BoshTab({
+    required this.user,
+    required this.roleLabel,
+    required this.onOpenTab,
+    required this.onEditProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        _GlowOrb(color: _C.purple, size: 220, top: -60, right: -30),
+        _GlowOrb(color: _C.pink, size: 180, bottom: 300, left: -40),
+        CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 20,
+                right: 20,
+                bottom: 14,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        user.fullName.isNotEmpty
+                            ? 'Xush kelibsiz, ${user.fullName.split(' ').first}!'
+                            : 'Xush kelibsiz!',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: _C.white,
+                        ),
+                      ),
+                    ),
+                    _NotificationBell(
+                      userId: user.id,
+                      hostel: user.hostel ?? 'boys',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _HeroCard(
+                    user: user,
+                    roleLabel: roleLabel,
+                    onEdit: onEditProfile,
+                  ),
+                  const SizedBox(height: 16),
+                  const _StatsStrip(),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _QuickActionCard(
+                          icon: Icons.apartment_rounded,
+                          label: 'Yotoqxona',
+                          color: _C.teal,
+                          onTap: () => onOpenTab(1),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _QuickActionCard(
+                          icon: Icons.receipt_long_rounded,
+                          label: "To'lovlar",
+                          color: _C.orange,
+                          onTap: () => onOpenTab(2),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _QuickActionCard(
+                          icon: Icons.forum_rounded,
+                          label: 'Murojaat yuborish',
+                          color: _C.pink,
+                          onTap: () => onOpenTab(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 100),
+                ]),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickActionCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionCard({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 14),
+        decoration: BoxDecoration(
+          color: _C.bgCard,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: _C.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── "Yotoqxona" (Room) tab ──────────────────────────────────────
+class _YotoqxonaTab extends StatelessWidget {
+  final UserModel user;
+
+  const _YotoqxonaTab({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        _GlowOrb(color: _C.teal, size: 220, top: -60, right: -30),
+        SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
+                child: Row(
+                  children: const [
+                    Text(
+                      'Yotoqxona',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: _C.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: user.roomId == null || user.roomId!.isEmpty
+                    ? _buildEmpty(context)
+                    : FutureBuilder<QuerySnapshot>(
+                        // Diqqat: user.roomId — xona hujjatining Firestore ID'si
+                        // emas, balki xona RAQAMI (masalan "102"). Shuning
+                        // uchun doc(user.roomId) emas, roomNumber maydoni
+                        // bo'yicha qidiramiz (room_assignment_screen.dart'da
+                        // ham xuddi shu mantiq ishlatiladi).
+                        future: FirebaseFirestore.instance
+                            .collection('xonalar')
+                            .where('roomNumber',
+                                isEqualTo:
+                                    int.tryParse(user.roomId!) ?? user.roomId)
+                            .limit(1)
+                            .get(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                color: _C.violet,
+                              ),
+                            );
+                          }
+                          if (!snapshot.hasData ||
+                              snapshot.data!.docs.isEmpty) {
+                            return _buildEmpty(context);
+                          }
+                          final doc = snapshot.data!.docs.first;
+                          final data = doc.data() as Map<String, dynamic>;
+                          data['id'] = doc.id;
+                          final room = RoomModel.fromJson(data);
+                          return _buildRoom(room);
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmpty(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 40, 20, 120),
+      children: [
+        Icon(Icons.apartment_outlined,
+            size: 56, color: _C.muted.withOpacity(0.6)),
+        const SizedBox(height: 16),
+        const Text(
+          "Sizga hali xona tayinlanmagan",
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: _C.soft,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          "Xona tayinlanganidan so'ng ma'lumotlar shu yerda ko'rinadi.",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12.5, color: _C.muted),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRoom(RoomModel room) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+      children: [
+        _InfoCard(
+          title: "Xona ma'lumotlari",
+          iconColor: _C.teal,
+          iconBg: const Color(0x2600CEC9),
+          icon: Icons.apartment_outlined,
+          rows: [
+            _InfoRow(
+              icon: Icons.door_front_door_outlined,
+              label: 'Xona raqami',
+              value: '№ ${room.roomNumber}',
+            ),
+            _InfoRow(
+              icon: Icons.layers_outlined,
+              label: 'Qavat',
+              value: '${room.floor}',
+            ),
+            _InfoRow(
+              icon: Icons.groups_outlined,
+              label: "Sig'im",
+              value: '${room.currentOccupants}/${room.capacity}',
+            ),
+            _InfoRow(
+              icon: Icons.info_outline,
+              label: 'Holati',
+              value: room.status.displayName,
+            ),
+            _InfoRow(
+              icon: Icons.payments_outlined,
+              label: 'Oylik narx',
+              value: "${room.pricePerMonth.toStringAsFixed(0)} so'm",
+            ),
+          ],
+        ),
+        if (room.amenities.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _InfoCard(
+            title: 'Qulayliklar',
+            iconColor: _C.violet,
+            iconBg: const Color(0x2Ea29bfe),
+            icon: Icons.checklist_outlined,
+            rows: room.amenities
+                .map((a) => _InfoRow(
+                      icon: Icons.check_circle_outline,
+                      label: a,
+                      value: '',
+                    ))
+                .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ─── "Profil" tab (original profile content) ─────────────────────
+class _ProfilTab extends StatelessWidget {
+  final UserModel user;
+  final String roleLabel;
+  final VoidCallback onEditProfile;
+
+  const _ProfilTab({
+    required this.user,
+    required this.roleLabel,
+    required this.onEditProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // Glow orbs
+        _GlowOrb(color: _C.purple, size: 220, top: -60, right: -30),
+        _GlowOrb(color: _C.pink, size: 180, bottom: 300, left: -40),
+
+        // Scrollable content
+        CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: _TopBar(
+                onEdit: onEditProfile,
+                userId: user.id,
+                hostel: user.hostel ?? 'boys',
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _HeroCard(
+                    user: user,
+                    roleLabel: roleLabel,
+                    onEdit: onEditProfile,
+                  ),
+                  const SizedBox(height: 16),
+                  const _StatsStrip(),
+                  const SizedBox(height: 16),
+                  _InfoCard(
+                    title: "Shaxsiy ma'lumotlar",
+                    iconColor: _C.violet,
+                    iconBg: const Color(0x2Ea29bfe),
+                    icon: Icons.person_outline_rounded,
+                    rows: [
+                      _InfoRow(
+                        icon: Icons.badge_outlined,
+                        label: 'Ism familya',
+                        value: user.fullName.isNotEmpty ? user.fullName : '—',
+                      ),
+                      _InfoRow(
+                        icon: Icons.phone_outlined,
+                        label: 'Telefon',
+                        value: user.phoneNumber.isNotEmpty
+                            ? user.phoneNumber
+                            : '—',
+                      ),
+                      _InfoRow(
+                        icon: Icons.email_outlined,
+                        label: 'Email',
+                        value: user.email.isNotEmpty ? user.email : '—',
+                      ),
+                      _InfoRow(
+                        icon: Icons.cake_outlined,
+                        label: "Tug'ilgan sana",
+                        value: _formatBirthDate(user.birthDate),
+                        valueMuted: user.birthDate == null,
+                      ),
+                      _InfoRow(
+                        icon: Icons.map_outlined,
+                        label: 'Viloyat',
+                        value: user.region ?? 'Kiritilmagan',
+                        valueMuted: user.region == null,
+                      ),
+                      _InfoRow(
+                        icon: Icons.location_city_outlined,
+                        label: 'Tuman/Shahar',
+                        value: user.district ?? 'Kiritilmagan',
+                        valueMuted: user.district == null,
+                      ),
+                      _InfoRow(
+                        icon: Icons.badge_outlined,
+                        label: 'Pasport',
+                        value: user.passportId ?? 'Kiritilmagan',
+                        valueMuted: user.passportId == null,
+                      ),
+                      _InfoRow(
+                        icon: Icons.fingerprint_rounded,
+                        label: 'JSHSHIR',
+                        value: user.jshshir ?? 'Kiritilmagan',
+                        valueMuted: user.jshshir == null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _InfoCard(
+                    title: "O'quv ma'lumotlari",
+                    iconColor: _C.orange,
+                    iconBg: const Color(0x22fdcb6e),
+                    icon: Icons.school_outlined,
+                    rows: [
+                      _InfoRow(
+                        icon: Icons.perm_identity_outlined,
+                        label: 'Student ID',
+                        value: user.studentId ?? '—',
+                        valueMuted: user.studentId == null,
+                      ),
+                      _InfoRow(
+                        icon: Icons.account_balance_outlined,
+                        label: 'Fakultet',
+                        value: user.faculty ?? 'Tanlanmagan',
+                        valueMuted: user.faculty == null,
+                      ),
+                      _InfoRow(
+                        icon: Icons.menu_book_outlined,
+                        label: 'Joriy kurs',
+                        value: user.course != null
+                            ? '${user.course}-kurs'
+                            : 'Tanlanmagan',
+                        valueMuted: user.course == null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _InfoCard(
+                    title: "Xona ma'lumotlari",
+                    iconColor: _C.teal,
+                    iconBg: const Color(0x2600CEC9),
+                    icon: Icons.apartment_outlined,
+                    rows: [
+                      _InfoRow(
+                        icon: user.hostel == 'girls'
+                            ? Icons.woman_rounded
+                            : Icons.man_rounded,
+                        label: 'Yotoqxona turi',
+                        value: user.hostel == 'girls'
+                            ? 'Qiz bolalar yotoqxonasi'
+                            : "O'g'il bolalar yotoqxonasi",
+                      ),
+                      _InfoRow(
+                        icon: Icons.door_front_door_outlined,
+                        label: 'Xona raqami',
+                        value: user.roomId ?? 'Tayinlanmagan',
+                        valueMuted: user.roomId == null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _LogoutButton(onConfirmed: () async {
+                    await AuthService.logout();
+                    if (context.mounted) {
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                          builder: (_) => LoginScreen(
+                            hostel: user.hostel ?? 'boys',
+                          ),
+                        ),
+                        (route) => false,
+                      );
+                    }
+                  }),
+                  const SizedBox(height: 100),
+                ]),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// "Kun.Oy.Yil" formatida tug'ilgan sanani ko'rsatish uchun yordamchi.
+String _formatBirthDate(DateTime? d) {
+  if (d == null) return 'Kiritilmagan';
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(d.day)}.${two(d.month)}.${d.year}';
+}
+
+// ─── Glow Orb ──────────────────────────────────────────────────
+class _GlowOrb extends StatelessWidget {
+  final Color color;
+  final double size;
+  final double? top, bottom, left, right;
+
+  const _GlowOrb({
+    required this.color,
+    required this.size,
+    this.top,
+    this.bottom,
+    this.left,
+    this.right,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: top,
+      bottom: bottom,
+      left: left,
+      right: right,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color.withOpacity(0.13),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Top Bar ───────────────────────────────────────────────────
+class _TopBar extends StatelessWidget {
+  final VoidCallback? onEdit;
+  final String? userId;
+  final String? hostel;
+
+  // FIX: 'hostel' maydoni avval konstruktorda yo'q edi (final maydon
+  // hech qachon qiymat olmasdi) — shuning uchun Dart analyzer xato
+  // ko'rsatib turgan edi. Endi 'this.hostel' qo'shildi.
+  const _TopBar({this.onEdit, this.userId, this.hostel});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 8,
+        left: 20,
+        right: 20,
+        bottom: 14,
+      ),
+      child: Row(
+        children: [
+          const Text(
+            'Mening profilim',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: _C.white,
+            ),
+          ),
+          const Spacer(),
+          if (userId != null) ...[
+            _NotificationBell(userId: userId!, hostel: hostel ?? 'boys'),
+            const SizedBox(width: 10),
+          ],
+          _IconBtn(icon: Icons.edit_outlined, onTap: onEdit ?? () {}),
+          const SizedBox(width: 10),
+          _IconBtn(icon: Icons.qr_code_2_rounded, onTap: () {}),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Notification Bell (unread badge) ─────────────────────────
+class _NotificationBell extends StatelessWidget {
+  final String userId;
+  final String hostel;
+
+  const _NotificationBell({
+    required this.userId,
+    required this.hostel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('bildirishnomalar')
+          .where('userId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BildirishnomalarList(
+                  userId: userId,
+                  hostel: hostel,
+                ),
+              ),
+            );
+          },
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.notifications_outlined,
+                  size: 19,
+                  color: _C.soft,
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    top: 4,
+                    right: 5,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      constraints:
+                          const BoxConstraints(minWidth: 15, minHeight: 15),
+                      decoration: BoxDecoration(
+                        color: _C.pink,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFF1E1B2E),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        unreadCount > 9 ? '9+' : '$unreadCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _IconBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _IconBtn({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.07),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, size: 18, color: _C.soft),
+      ),
+    );
+  }
+}
+
+// ─── Hero Card ─────────────────────────────────────────────────
+class _HeroCard extends StatelessWidget {
+  final UserModel user;
+  final String roleLabel;
+  final VoidCallback? onEdit;
+
+  const _HeroCard({required this.user, required this.roleLabel, this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    final initial =
+        user.fullName.isNotEmpty ? user.fullName[0].toUpperCase() : '?';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1E1B2E), Color(0xFF2D2060), Color(0xFF1A1535)],
+          stops: [0.0, 0.5, 1.0],
+        ),
+        border: Border.all(color: _C.purple.withOpacity(0.25)),
+      ),
+      child: Stack(
+        children: [
+          // Background glow top-right
+          Positioned(
+            top: -50,
+            right: -50,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    _C.purple.withOpacity(0.35),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Background glow bottom-left
+          Positioned(
+            bottom: -40,
+            left: 50,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    _C.teal.withOpacity(0.15),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Column(
+            children: [
+              // Avatar + info
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Avatar
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [_C.purple, _C.violet, _C.pink],
+                          ),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.15),
+                            width: 2,
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            initial,
+                            style: const TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Online dot
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: _C.mint,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: const Color(0xFF1E1B2E),
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Camera button
+                      Positioned(
+                        bottom: -4,
+                        right: -4,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: _C.purple,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0xFF1E1B2E),
+                              width: 2,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt_outlined,
+                            size: 11,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user.fullName.isNotEmpty ? user.fullName : '—',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: _C.white,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            user.email,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _C.muted,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: _C.purple.withOpacity(0.25),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: _C.violet.withOpacity(0.4),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.school_outlined,
+                                  size: 11,
+                                  color: _C.violet,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  roleLabel,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: _C.violet,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 18),
+
+              // Edit + share buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: _HeroActionBtn(
+                      icon: Icons.edit_outlined,
+                      label: 'Profilni tahrirlash',
+                      color: _C.violet,
+                      bg: _C.purple.withOpacity(0.2),
+                      border: _C.purple.withOpacity(0.35),
+                      onTap: onEdit ?? () {},
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _HeroIconBtn(
+                    icon: Icons.share_outlined,
+                    onTap: () {},
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color, bg, border;
+  final VoidCallback onTap;
+
+  const _HeroActionBtn({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.bg,
+    required this.border,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 38,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: border),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroIconBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _HeroIconBtn({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Icon(icon, size: 18, color: _C.muted),
+      ),
+    );
+  }
+}
+
+// ─── Stats Strip ───────────────────────────────────────────────
+// Eslatma: bu yerdagi raqamlar hozircha 0 — chunki "necha kun yashagan",
+// "nechta to'lov" va "nechta ariza" kabi ma'lumotlar Firestore'dagi
+// boshqa to'plamlardan (masalan to'lovlar, arizalar) hisoblanishi kerak.
+// Hozircha vizual joy egallovchi sifatida qoldirildi.
+class _StatsStrip extends StatelessWidget {
+  const _StatsStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: const [
+        Expanded(
+          child: _StatBox(
+            icon: Icons.calendar_month_outlined,
+            value: '0',
+            label: 'Kun',
+            valueColor: _C.violet,
+            iconColor: _C.violet,
+            iconBg: Color(0x2Ea29bfe),
+            topGradient: [_C.purple, _C.violet],
+          ),
+        ),
+        SizedBox(width: 10),
+        Expanded(
+          child: _StatBox(
+            icon: Icons.receipt_long_outlined,
+            value: '0',
+            label: "To'lov",
+            valueColor: _C.teal,
+            iconColor: _C.teal,
+            iconBg: Color(0x2200CEC9),
+            topGradient: [_C.teal, _C.mint],
+          ),
+        ),
+        SizedBox(width: 10),
+        Expanded(
+          child: _StatBox(
+            icon: Icons.description_outlined,
+            value: '0',
+            label: 'Ariza',
+            valueColor: _C.orange,
+            iconColor: _C.orange,
+            iconBg: Color(0x22fdcb6e),
+            topGradient: [_C.orange, _C.coral],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatBox extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color valueColor, iconColor, iconBg;
+  final List<Color> topGradient;
+
+  const _StatBox({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.valueColor,
+    required this.iconColor,
+    required this.iconBg,
+    required this.topGradient,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 16, 10, 14),
+      decoration: BoxDecoration(
+        color: _C.bgCard,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _C.faint),
+      ),
+      child: Column(
+        children: [
+          // Top accent bar
+          Container(
+            height: 2,
+            margin: const EdgeInsets.only(bottom: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: topGradient),
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: iconColor),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: valueColor,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: _C.muted,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Info Card ─────────────────────────────────────────────────
+class _InfoCard extends StatelessWidget {
+  final String title;
+  final Color iconColor;
+  final Color iconBg;
+  final IconData icon;
+  final List<_InfoRow> rows;
+
+  const _InfoCard({
+    required this.title,
+    required this.iconColor,
+    required this.iconBg,
+    required this.icon,
+    required this.rows,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _C.bgCard,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _C.faint),
+      ),
+      child: Column(
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Icon(icon, size: 16, color: iconColor),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _C.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: Color(0x0DFFFFFF), height: 1),
+
+          // Rows
+          ...rows.asMap().entries.map((e) {
+            final isLast = e.key == rows.length - 1;
+            return Column(
+              children: [
+                e.value,
+                if (!isLast)
+                  const Divider(
+                    color: Color(0x0AFFFFFF),
+                    height: 1,
+                    indent: 16,
+                    endIndent: 16,
+                  ),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool valueMuted;
+  final Color? valueColor;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueMuted = false,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Icon(icon, size: 17, color: _C.muted),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.white.withOpacity(0.45),
+            ),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: valueMuted ? _C.muted : (valueColor ?? _C.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Logout Button ─────────────────────────────────────────────
+class _LogoutButton extends StatelessWidget {
+  final VoidCallback onConfirmed;
+
+  const _LogoutButton({required this.onConfirmed});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        showDialog(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1B2E),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Text(
+              'Chiqish',
+              style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+            ),
+            content: Text(
+              'Hisobdan chiqishni tasdiqlaysizmi?',
+              style: TextStyle(color: Colors.white.withOpacity(0.6)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Bekor qilish',
+                    style: TextStyle(color: Color(0xFFa29bfe))),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  onConfirmed();
+                },
+                child: const Text('Chiqish',
+                    style: TextStyle(color: Color(0xFFfd79a8))),
+              ),
+            ],
+          ),
+        );
+      },
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: _C.pink.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _C.pink.withOpacity(0.25)),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.logout_rounded, size: 18, color: _C.pink),
+            SizedBox(width: 8),
+            Text(
+              'Chiqish',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _C.pink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Edit Profile Sheet ───────────────────────────────────────────
+class _EditProfileSheet extends StatefulWidget {
+  final UserModel user;
+
+  const _EditProfileSheet({required this.user});
+
+  @override
+  State<_EditProfileSheet> createState() => _EditProfileSheetState();
+}
+
+class _EditProfileSheetState extends State<_EditProfileSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _studentIdCtrl;
+  String? _selectedFaculty;
+  String? _selectedCourse;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.user.fullName);
+    _phoneCtrl = TextEditingController(text: widget.user.phoneNumber);
+    _studentIdCtrl = TextEditingController(text: widget.user.studentId ?? '');
+    _selectedFaculty =
+        kFaculties.contains(widget.user.faculty) ? widget.user.faculty : null;
+    _selectedCourse =
+        kCourses.contains(widget.user.course) ? widget.user.course : null;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _studentIdCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _saving = true);
+
+    final fullName = _nameCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    final studentId = _studentIdCtrl.text.trim();
+    final faculty = _selectedFaculty;
+    final course = _selectedCourse;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('foydalanuvchilar')
+          .doc(widget.user.id)
+          .update({
+        'fullName': fullName,
+        'phoneNumber': phone,
+        'studentId': studentId.isEmpty ? null : studentId,
+        'faculty': faculty,
+        'course': course,
+      });
+
+      final updated = widget.user.copyWith(
+        fullName: fullName,
+        phoneNumber: phone,
+        studentId: studentId.isEmpty ? null : studentId,
+        faculty: faculty,
+        course: course,
+      );
+
+      if (mounted) Navigator.pop(context, updated);
+    } catch (e) {
+      setState(() => _saving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Xatolik: saqlab bo'lmadi ($e)"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  InputDecoration _decoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: _C.muted, fontSize: 13),
+      prefixIcon: Icon(icon, color: _C.muted, size: 19),
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.05),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: Colors.white.withOpacity(0.08)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _C.purple, width: 1.4),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _C.coral),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: _C.bgCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          MediaQuery.of(context).padding.bottom + 20,
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Profilni tahrirlash',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: _C.white,
+                ),
+              ),
+              const SizedBox(height: 18),
+              TextFormField(
+                controller: _nameCtrl,
+                style: const TextStyle(color: _C.white),
+                decoration: _decoration('Ism familya', Icons.badge_outlined),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Ismni kiriting' : null,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                style: const TextStyle(color: _C.white),
+                decoration: _decoration('Telefon', Icons.phone_outlined),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Telefon raqamini kiriting'
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _studentIdCtrl,
+                style: const TextStyle(color: _C.white),
+                decoration: _decoration(
+                    'Student ID (ixtiyoriy)', Icons.perm_identity_outlined),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedFaculty,
+                dropdownColor: _C.bgCard,
+                style: const TextStyle(color: _C.white, fontSize: 14),
+                decoration: _decoration('Fakultet', Icons.school_outlined),
+                items: kFaculties
+                    .map((f) => DropdownMenuItem(value: f, child: Text(f)))
+                    .toList(),
+                onChanged: (val) => setState(() => _selectedFaculty = val),
+                validator: (v) =>
+                    (v == null || v.isEmpty) ? 'Fakultetni tanlang' : null,
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedCourse,
+                dropdownColor: _C.bgCard,
+                style: const TextStyle(color: _C.white, fontSize: 14),
+                decoration: _decoration('Joriy kurs', Icons.menu_book_outlined),
+                items: kCourses
+                    .map((c) =>
+                        DropdownMenuItem(value: c, child: Text('$c-kurs')))
+                    .toList(),
+                onChanged: (val) => setState(() => _selectedCourse = val),
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _C.purple,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: _saving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.4,
+                          ),
+                        )
+                      : const Text(
+                          'Saqlash',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
