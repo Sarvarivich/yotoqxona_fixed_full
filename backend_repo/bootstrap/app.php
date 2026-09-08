@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,6 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'role' => \App\Http\Middleware\EnsureRole::class,
         ]);
+
+        // API so'rovlari hech qachon login sahifasiga yo'naltirilmaydi.
+        // Aks holda token yo'q bo'lsa "Route [login] not defined"
+        // xatosi chiqadi (500), 401 o'rniga.
+        $middleware->redirectGuestsTo(fn () => null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
