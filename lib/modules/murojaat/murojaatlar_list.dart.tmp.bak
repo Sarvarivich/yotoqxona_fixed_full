@@ -1,11 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models/complaint_model.dart';
 import '../models/user_model.dart';
 import 'murojaat_tafsilotlari.dart';
 import 'murojaat_yozish.dart';
 import '../services/api_service.dart';
 
-// ─── Boshqa bo'limlar bilan bir xil DARK palette ───
+// в”Ђв”Ђв”Ђ Boshqa bo'limlar bilan bir xil DARK palette в”Ђв”Ђв”Ђ
 class _LC {
   static const bg = Color(0xFF0F0D1A);
   static const card = Color(0xFF1A1730);
@@ -30,7 +30,7 @@ class MurojaatlarList extends StatefulWidget {
   // ma'lumotini belgilash uchun kerak).
   final UserModel? currentUser;
   // Faqat shu qabul qiluvchiga ("mudir" yoki "admin") yuborilgan murojaatlarni
-  // ko'rsatish uchun filtr. null bo'lsa — barcha murojaatlar ko'rsatiladi
+  // ko'rsatish uchun filtr. null bo'lsa вЂ” barcha murojaatlar ko'rsatiladi
   // (masalan, admin barcha murojaatlarni: kimdan va kimga yuborilganini ko'radi).
   final ComplaintTarget? roleFilter;
   const MurojaatlarList({
@@ -55,11 +55,11 @@ class _MurojaatlarListState extends State<MurojaatlarList> {
   @override
   void initState() {
     super.initState();
-    // ✅ Admin/mudir uchun ekran o'z yotoqxonasi tanlangan holda ochiladi,
+    // вњ… Admin/mudir uchun ekran o'z yotoqxonasi tanlangan holda ochiladi,
     // so'ngra "O'g'il bolalar" / "Qiz bolalar" tugmalari orqali ikkalasi
     // orasida almashtirishi mumkin (Talabalar va Hodimlar hamda Xonalar
     // bo'limlaridagi kabi). Talaba o'zining murojaatlarini ko'rayotganda
-    // bu tanlov ishlatilmaydi — u faqat o'z hostel'i doirasida qoladi.
+    // bu tanlov ishlatilmaydi вЂ” u faqat o'z hostel'i doirasida qoladi.
     _selectedHostel =
         (widget.hostel.trim().isEmpty ? 'boys' : widget.hostel.trim())
             .toLowerCase();
@@ -73,7 +73,7 @@ class _MurojaatlarListState extends State<MurojaatlarList> {
 
   @override
   Widget build(BuildContext context) {
-    // ⚠️ Admin/mudir uchun joriy tanlangan bo'lim (_selectedHostel) bo'yicha,
+    // вљ пёЏ Admin/mudir uchun joriy tanlangan bo'lim (_selectedHostel) bo'yicha,
     // talaba uchun esa o'zining hostel'i (widget.hostel) bo'yicha filtrlanadi.
     final effectiveHostel = widget.isAdmin ? _selectedHostel : widget.hostel;
     // Filtrlash endi backend tomonida bajariladi:
@@ -117,7 +117,7 @@ class _MurojaatlarListState extends State<MurojaatlarList> {
       ),
       body: Column(
         children: [
-          // 🚻 Admin/mudir uchun yotoqxona turini tanlash — Talabalar va
+          // рџљ» Admin/mudir uchun yotoqxona turini tanlash вЂ” Talabalar va
           // Hodimlar hamda Xonalar bo'limlaridagi kabi, murojaatlar ham
           // "O'g'il bolalar" va "Qiz bolalar" uchun alohida-alohida
           // ko'rsatiladi.
@@ -180,7 +180,7 @@ class _MurojaatlarListState extends State<MurojaatlarList> {
                 ),
               ),
             ),
-          // 🔎 Admin va mudir uchun talaba ismi bo'yicha qidiruv
+          // рџ”Ћ Admin va mudir uchun talaba ismi bo'yicha qidiruv
           if (widget.isAdmin)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
@@ -254,7 +254,7 @@ class _MurojaatlarListState extends State<MurojaatlarList> {
 
                 var complaints = snapshot.data ?? const <dynamic>[];
 
-                // 🔎 Talaba ismi bo'yicha mahalliy filtrlash
+                // рџ”Ћ Talaba ismi bo'yicha mahalliy filtrlash
                 if (widget.isAdmin && _searchQuery.isNotEmpty) {
                   complaints = complaints.where((doc) {
                     final data = Map<String, dynamic>.from(doc as Map);
@@ -262,8 +262,6 @@ class _MurojaatlarListState extends State<MurojaatlarList> {
                         (data['student'] is Map
                                 ? (data['student']['full_name'] ?? '')
                                 : (data['studentName'] ?? ''))
-                            .toString()
-                            .toLowerCase();
                     return studentName.contains(_searchQuery);
                   }).toList();
                 }
@@ -499,7 +497,7 @@ class _MurojaatlarListState extends State<MurojaatlarList> {
                           ),
                         ],
                       ),
-                      // Murojaat kimga (va admin/mudirga — kimdan) yuborilgani
+                      // Murojaat kimga (va admin/mudirga вЂ” kimdan) yuborilgani
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 6,
@@ -512,7 +510,7 @@ class _MurojaatlarListState extends State<MurojaatlarList> {
                             label: "Kimga: ${complaint.targetRole.displayName}",
                             color: _LC.pink,
                           ),
-                          // "Kimdan" faqat admin/mudir uchun — talaba
+                          // "Kimdan" faqat admin/mudir uchun вЂ” talaba
                           // buni o'zi biladi
                           if (isAdmin)
                             _tagChip(

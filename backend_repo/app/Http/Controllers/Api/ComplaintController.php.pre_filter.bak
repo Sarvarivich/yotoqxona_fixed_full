@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -20,19 +20,6 @@ class ComplaintController extends Controller
 
         if ($user->role === 'talaba') {
             $query->where('student_id', $user->id);
-        }
-
-        // Mudir faqat o'z binosidagi talabalarning murojaatlarini
-        // ko'radi. Admin va superAdmin uchun cheklov yo'q.
-        if ($user->role === 'mudir' && !empty($user->hostel)) {
-            $query->whereHas('student', function ($q) use ($user) {
-                $q->where('hostel', $user->hostel);
-            });
-        }
-
-        // Kimga yo'naltirilgani bo'yicha filtr (mudir / admin / moliyachi).
-        if ($request->filled('target_role')) {
-            $query->where('target_role', $request->target_role);
         }
 
         if ($request->filled('status')) {

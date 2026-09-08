@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
@@ -10,9 +10,8 @@ import 'talaba_tolovlar_screen.dart';
 import '../modules/bildirishnoma/bildirishnomalar_list.dart';
 import '../modules/murojaat/murojaatlar_list.dart';
 import '../modules/widgets/application_stepper.dart';
-import '../modules/services/api_service.dart';
 
-// в”Ђв”Ђв”Ђ Colors в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Colors ────────────────────────────────────────────────────
 class _C {
   static const bgBase = Color(0xFF0F0D1A);
   static const bgCard = Color(0xFF1E1B2E);
@@ -29,7 +28,7 @@ class _C {
   static const faint = Color(0x0FFFFFFF);
 }
 
-// в”Ђв”Ђв”Ђ Screen (shell with 4 working tabs) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Screen (shell with 4 working tabs) ─────────────────────────
 class TalabaProfileScreen extends StatefulWidget {
   final UserModel user;
 
@@ -42,13 +41,14 @@ class TalabaProfileScreen extends StatefulWidget {
 class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
   int _tab = 0;
   late UserModel _user;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userSubscription;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
     _user = widget.user;
-    _loadStudentProfile();
+    _listenToStudentProfile();
   }
 
   void _goTo(int index) {
@@ -68,33 +68,27 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
 
   void _onUserUpdated(UserModel updated) => setState(() => _user = updated);
 
-  // Profil ma'lumotini Laravel backend'dan yuklaydi.
-  // Ilgari Firestore snapshots() orqali real vaqtda kuzatilardi;
-  // endi ekran ochilganda bir marta yuklanadi.
-  Future<void> _loadStudentProfile() async {
-    try {
-      final response = await ApiService().getMe();
-
-      // Backend javobi {success, data: {...}} yoki {success, user: {...}}
-      // ko'rinishida kelishi mumkin - ikkalasini ham qo'llab-quvvatlaymiz.
-      final raw = response['data'] ?? response['user'];
-      if (raw == null || !mounted) return;
-
-      final updated =
-          UserModel.fromJson(Map<String, dynamic>.from(raw as Map));
-
+  void _listenToStudentProfile() {
+    _userSubscription?.cancel();
+    _userSubscription = FirebaseFirestore.instance
+        .collection('foydalanuvchilar')
+        .doc(_user.id)
+        .snapshots()
+        .listen((snap) {
+      if (!mounted || !snap.exists) return;
+      final data = snap.data();
+      if (data == null) return;
+      final updated = UserModel.fromJson({...data, 'id': snap.id});
       if (_tab == 2 && !updated.hasRoom) {
         _tab = 0;
       }
       setState(() => _user = updated);
-    } catch (e) {
-      // Xato bo'lsa login paytida olingan ma'lumot bilan davom etamiz.
-      debugPrint('Profilni yuklashda xatolik: $e');
-    }
+    });
   }
 
   @override
   void dispose() {
+    _userSubscription?.cancel();
     super.dispose();
   }
 
@@ -160,7 +154,7 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
         onSelect: _selectFromDrawer,
         hasRoom: _user.hasRoom,
       ),
-      // Standart Flutter AppBar ishlatilyapti вЂ” "drawer" berilgan bo'lsa,
+      // Standart Flutter AppBar ishlatilyapti — "drawer" berilgan bo'lsa,
       // Flutter menyu (hamburger) belgisini AVTOMATIK qo'shadi va uni bosish
       // kafolatlangan holda ishlaydi. Bu sahifalarning o'z sarlavhalari bilan
       // ustma-ust tushib qolish muammosini butunlay yo'q qiladi, chunki
@@ -175,7 +169,7 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
           statusBarIconBrightness: Brightness.light,
         ),
       ),
-      // Sahifalar endi to'liq ekranni egallaydi вЂ” eski pastki navbar olib
+      // Sahifalar endi to'liq ekranni egallaydi — eski pastki navbar olib
       // tashlandi, chunki u har bir sahifaning o'z FloatingActionButton
       // tugmasini (masalan "Murojaat yozish") yashirib qo'yayotgan edi.
       body: IndexedStack(index: _tab, children: pages),
@@ -183,7 +177,7 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
   }
 }
 
-// в”Ђв”Ђв”Ђ Talaba uchun yon menyu (Drawer) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Talaba uchun yon menyu (Drawer) ────────────────────────────
 class _TalabaDrawer extends StatelessWidget {
   final String userName;
   final String userEmail;
@@ -311,7 +305,7 @@ String _applicationStepTitle(UserModel user) {
     case 4:
       return "Chek moliyaga yuborildi, tasdiqlash kutilmoqda";
     case 5:
-      return "To'lov tasdiqlandi вЂ” jarayon yakunlandi";
+      return "To'lov tasdiqlandi — jarayon yakunlandi";
     default:
       return "Ariza holati";
   }
@@ -334,7 +328,7 @@ String? _applicationStepMessage(UserModel user) {
   return null;
 }
 
-// в”Ђв”Ђв”Ђ "Bosh" (Home) tab в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── "Bosh" (Home) tab ───────────────────────────────────────────
 class _BoshTab extends StatelessWidget {
   final UserModel user;
   final String roleLabel;
@@ -503,7 +497,7 @@ class _QuickActionCard extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ "Yotoqxona" (Room) tab в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── "Yotoqxona" (Room) tab ──────────────────────────────────────
 class _YotoqxonaTab extends StatelessWidget {
   final UserModel user;
 
@@ -537,7 +531,7 @@ class _YotoqxonaTab extends StatelessWidget {
                 child: user.roomId == null || user.roomId!.isEmpty
                     ? _buildEmpty(context)
                     : FutureBuilder<QuerySnapshot>(
-                        // Diqqat: user.roomId вЂ” xona hujjatining Firestore ID'si
+                        // Diqqat: user.roomId — xona hujjatining Firestore ID'si
                         // emas, balki xona RAQAMI (masalan "102"). Shuning
                         // uchun doc(user.roomId) emas, roomNumber maydoni
                         // bo'yicha qidiramiz (room_assignment_screen.dart'da
@@ -616,7 +610,7 @@ class _YotoqxonaTab extends StatelessWidget {
             _InfoRow(
               icon: Icons.door_front_door_outlined,
               label: 'Xona raqami',
-              value: 'в„– ${room.roomNumber}',
+              value: '№ ${room.roomNumber}',
             ),
             _InfoRow(
               icon: Icons.layers_outlined,
@@ -661,7 +655,7 @@ class _YotoqxonaTab extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ "Profil" tab (original profile content) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── "Profil" tab (original profile content) ─────────────────────
 class _ProfilTab extends StatelessWidget {
   final UserModel user;
   final String roleLabel;
@@ -709,19 +703,19 @@ class _ProfilTab extends StatelessWidget {
                       _InfoRow(
                         icon: Icons.badge_outlined,
                         label: 'Ism familya',
-                        value: user.fullName.isNotEmpty ? user.fullName : 'вЂ”',
+                        value: user.fullName.isNotEmpty ? user.fullName : '—',
                       ),
                       _InfoRow(
                         icon: Icons.phone_outlined,
                         label: 'Telefon',
                         value: user.phoneNumber.isNotEmpty
                             ? user.phoneNumber
-                            : 'вЂ”',
+                            : '—',
                       ),
                       _InfoRow(
                         icon: Icons.email_outlined,
                         label: 'Email',
-                        value: user.email.isNotEmpty ? user.email : 'вЂ”',
+                        value: user.email.isNotEmpty ? user.email : '—',
                       ),
                       _InfoRow(
                         icon: Icons.cake_outlined,
@@ -765,7 +759,7 @@ class _ProfilTab extends StatelessWidget {
                       _InfoRow(
                         icon: Icons.perm_identity_outlined,
                         label: 'Student ID',
-                        value: user.studentId ?? 'вЂ”',
+                        value: user.studentId ?? '—',
                         valueMuted: user.studentId == null,
                       ),
                       _InfoRow(
@@ -836,7 +830,7 @@ String _formatBirthDate(DateTime? d) {
   return '${two(d.day)}.${two(d.month)}.${d.year}';
 }
 
-// в”Ђв”Ђв”Ђ Glow Orb в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Glow Orb ──────────────────────────────────────────────────
 class _GlowOrb extends StatelessWidget {
   final Color color;
   final double size;
@@ -870,13 +864,13 @@ class _GlowOrb extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ Top Bar в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Top Bar ───────────────────────────────────────────────────
 class _TopBar extends StatelessWidget {
   final VoidCallback? onEdit;
   final String? userId;
   final String? hostel;
 
-  const _TopBar({this.onEdit, this.userId, this.hostel});
+  const _TopBar({this.onEdit, this.userId});
 
   @override
   Widget build(BuildContext context) {
@@ -911,12 +905,8 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ Notification Bell (unread badge) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-// Bildirishnoma qo'ng'irog'i - o'qilmagan xabarlar sonini ko'rsatadi.
-// Ilgari Firestore StreamBuilder orqali real vaqtda sanardi;
-// endi Laravel API'dan bir marta yuklanadi va ro'yxatdan
-// qaytilganda qayta hisoblanadi.
-class _NotificationBell extends StatefulWidget {
+// ─── Notification Bell (unread badge) ─────────────────────────
+class _NotificationBell extends StatelessWidget {
   final String userId;
   final String hostel;
 
@@ -926,102 +916,79 @@ class _NotificationBell extends StatefulWidget {
   });
 
   @override
-  State<_NotificationBell> createState() => _NotificationBellState();
-}
-
-class _NotificationBellState extends State<_NotificationBell> {
-  int _unreadCount = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUnreadCount();
-  }
-
-  Future<void> _loadUnreadCount() async {
-    try {
-      final items = await ApiService().getNotifications();
-      if (!mounted) return;
-
-      // Backend 'is_read' maydonini qaytaradi. Eski Firestore
-      // ma'lumotlarida 'isRead' bo'lishi mumkin - ikkalasini tekshiramiz.
-      final count = items.where((n) {
-        if (n is! Map) return false;
-        final read = n['is_read'] ?? n['isRead'] ?? false;
-        return read == false || read == 0;
-      }).length;
-
-      setState(() => _unreadCount = count);
-    } catch (e) {
-      debugPrint('Bildirishnomalarni yuklashda xatolik: $e');
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BildirishnomalarList(
-              userId: widget.userId,
-              hostel: widget.hostel,
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('bildirishnomalar')
+          .where('userId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BildirishnomalarList(
+                  userId: userId,
+                  hostel: hostel,
+                ),
+              ),
+            );
+          },
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.notifications_outlined,
+                  size: 19,
+                  color: _C.soft,
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    top: 4,
+                    right: 5,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      constraints:
+                          const BoxConstraints(minWidth: 15, minHeight: 15),
+                      decoration: BoxDecoration(
+                        color: _C.pink,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFF1E1B2E),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        unreadCount > 9 ? '9+' : '$unreadCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         );
-        // Ro'yxatdan qaytgach sonni yangilaymiz.
-        _loadUnreadCount();
       },
-      child: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            const Icon(
-              Icons.notifications_outlined,
-              size: 19,
-              color: _C.soft,
-            ),
-            if (_unreadCount > 0)
-              Positioned(
-                top: 4,
-                right: 5,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 4, vertical: 1),
-                  constraints:
-                      const BoxConstraints(minWidth: 15, minHeight: 15),
-                  decoration: BoxDecoration(
-                    color: _C.pink,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: const Color(0xFF1E1B2E),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Text(
-                    _unreadCount > 9 ? '9+' : '$_unreadCount',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      height: 1.2,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1050,7 +1017,7 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ Hero Card в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Hero Card ─────────────────────────────────────────────────
 class _HeroCard extends StatelessWidget {
   final UserModel user;
   final String roleLabel;
@@ -1198,7 +1165,7 @@ class _HeroCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            user.fullName.isNotEmpty ? user.fullName : 'вЂ”',
+                            user.fullName.isNotEmpty ? user.fullName : '—',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
@@ -1353,8 +1320,8 @@ class _HeroIconBtn extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ Stats Strip в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-// Eslatma: bu yerdagi raqamlar hozircha 0 вЂ” chunki "necha kun yashagan",
+// ─── Stats Strip ───────────────────────────────────────────────
+// Eslatma: bu yerdagi raqamlar hozircha 0 — chunki "necha kun yashagan",
 // "nechta to'lov" va "nechta ariza" kabi ma'lumotlar Firestore'dagi
 // boshqa to'plamlardan (masalan to'lovlar, arizalar) hisoblanishi kerak.
 // Hozircha vizual joy egallovchi sifatida qoldirildi.
@@ -1477,7 +1444,7 @@ class _StatBox extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ Info Card в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Info Card ─────────────────────────────────────────────────
 class _InfoCard extends StatelessWidget {
   final String title;
   final Color iconColor;
@@ -1565,7 +1532,6 @@ class _InfoRow extends StatelessWidget {
     required this.label,
     required this.value,
     this.valueMuted = false,
-    this.valueColor,
   });
 
   @override
@@ -1600,7 +1566,7 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ Logout Button в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Logout Button ─────────────────────────────────────────────
 class _LogoutButton extends StatelessWidget {
   final VoidCallback onConfirmed;
 
@@ -1671,7 +1637,7 @@ class _LogoutButton extends StatelessWidget {
   }
 }
 
-// в”Ђв”Ђв”Ђ Edit Profile Sheet в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Edit Profile Sheet ───────────────────────────────────────────
 class _EditProfileSheet extends StatefulWidget {
   final UserModel user;
 

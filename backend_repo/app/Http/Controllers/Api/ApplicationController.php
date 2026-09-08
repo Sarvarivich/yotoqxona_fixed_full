@@ -3,253 +3,250 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Announcement;
-use App\Models\Notification;
-use App\Models\User;
+use App\Models\Application;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
-class NotificationController extends Controller
+/**
+ * Yotoqxona arizalari.
+ *
+ * Ariza bosqichlari (docs/yotoqxona_ariza_workflow.md ga mos):
+ *   step 1 — ariza to'ldirilmoqda
+ *   step 2 — submitted        (ko'rib chiqilmoqda)
+ *   step 3 — assigned         (yotoqxona/xona ajratildi)
+ *   step 4 — payment_pending  (chek moliyaga yuborildi)
+ *   step 5 — completed        (moliyachi tasdiqladi)
+ *
+ * DIQQAT: bu fayl ilgari xato bilan NotificationController klassini
+ * saqlab turgan edi, shuning uchun /api/applications endpointlari
+ * ishlamay qolgan. Endi klass nomi fayl nomiga mos keladi.
+ */
+class ApplicationController extends Controller
 {
+    /** Arizalarni ko'rib chiqadigan rollar. */
+    private const REVIEWERS = ['mudir', 'admin', 'superAdmin'];
+
+    private function isReviewer(Request $request): bool
+    {
+        return in_array($request->user()->role, self::REVIEWERS, true);
+    }
+
     /**
-     * Foydalanuvchining barcha bildirishnomalari.
+     * Arizalar ro'yxati.
+     * Talaba faqat o'z arizalarini ko'radi.
+     * Mudir faqat o'z binosidagi arizalarni ko'radi.
      */
     public function index(Request $request)
     {
         $user = $request->user();
 
-        $notifications = Notification::where('user_id', $user->id)
-            ->orderByDesc('created_at')
-            ->get();
+        $query = Application::with(['user', 'hostel', 'room', 'reviewer']);
 
-        return response()->json([
-            'success' => true,
-            'data' => $notifications,
-        ]);
-    }
-
-    /**
-     * Bitta bildirishnomani o'qilgan deb belgilash.
-     */
-    public function markAsRead(Request $request, $id)
-    {
-        $user = $request->user();
-
-        $notification = Notification::where('user_id', $user->id)
-            ->find($id);
-
-        if (!$notification) {
-            return response()->json([
-                'success' => false,
-                'message' => "Bildirishnoma topilmadi.",
-            ], 404);
-        }
-
-        $notification->update([
-            'is_read' => true,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => "O'qildi deb belgilandi.",
-            'data' => $notification->fresh(),
-        ]);
-    }
-
-    /**
-     * Barcha bildirishnomalarni o'qilgan deb belgilash.
-     */
-    public function markAllAsRead(Request $request)
-    {
-        $user = $request->user();
-
-        Notification::where('user_id', $user->id)
-            ->where('is_read', false)
-            ->update([
-                'is_read' => true,
-            ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => "Barcha bildirishnomalar o'qilgan deb belgilandi.",
-        ]);
-    }
-
-    /**
-     * Yangi bildirishnoma yuborish.
-     */
-    public function store(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'user_id' => 'required|exists:users,id',
-            'title' => 'required|string|max:255',
-            'message' => 'required|string',
-            'type' => 'nullable|string|max:100',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        $notification = Notification::create([
-            'user_id' => $request->input('user_id'),
-            'title' => $request->input('title'),
-            'message' => $request->input('message'),
-            'type' => $request->input('type', 'info'),
-            'is_read' => false,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => "Bildirishnoma muvaffaqiyatli yuborildi.",
-            'data' => $notification,
-        ], 201);
-    }
-
-    /**
-     * Bildirishnomani o'chirish.
-     * Faqat bildirishnoma egasi o'chira oladi.
-     */
-    public function destroy(Request $request, $id)
-    {
-        $user = $request->user();
-
-        $notification = Notification::where('user_id', $user->id)
-            ->find($id);
-
-        if (!$notification) {
-            return response()->json([
-                'success' => false,
-                'message' => "Bildirishnoma topilmadi.",
-            ], 404);
-        }
-
-        $notification->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => "Bildirishnoma o'chirildi.",
-        ]);
-    }
-
-    /**
-     * E'lonlar ro'yxati.
-     */
-    public function announcements(Request $request)
-    {
-        $user = $request->user();
-
-        $query = Announcement::with('creator');
-
-        if ($user && $user->role === 'talaba' && !empty($user->hostel)) {
-            $query->where(function ($q) use ($user) {
-                $q->whereNull('target_hostel')
-                    ->orWhere('target_hostel', 'all')
-                    ->orWhere('target_hostel', $user->hostel);
+        if (!$this->isReviewer($request)) {
+            $query->where('user_id', $user->id);
+        } elseif ($user->role === 'mudir' && !empty($user->hostel)) {
+            // Mudir o'z binosiga tegishli talabalarning arizalarini ko'radi.
+            $query->whereHas('user', function ($q) use ($user) {
+                $q->where('hostel', $user->hostel);
             });
         }
 
-        $announcements = $query
-            ->orderByDesc('created_at')
-            ->get();
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('step')) {
+            $query->where('step', $request->integer('step'));
+        }
+
+        // Ijtimoiy imtiyozga ega arizalarni filtrlash (mudir ekranidagi filtr).
+        if ($request->filled('has_social_benefit')) {
+            $query->where(
+                'has_social_benefit',
+                $request->boolean('has_social_benefit')
+            );
+        }
+
+        $perPage = min($request->integer('per_page', 25), 100);
 
         return response()->json([
             'success' => true,
-            'data' => $announcements,
+            'data' => $query->orderByDesc('created_at')->paginate($perPage),
         ]);
     }
 
     /**
-     * Yangi e'lon yaratish.
+     * Yangi ariza yaratish (talaba o'zi uchun).
      */
-    public function storeAnnouncement(Request $request)
+    public function store(Request $request)
     {
+        $user = $request->user();
+
         $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-            'message' => 'required|string',
-            'target_hostel' => 'nullable|string|in:boys,girls,all',
-            'target_role' => 'nullable|string|max:100',
+            'has_social_benefit' => 'nullable|boolean',
+            'benefit_type' => 'nullable|string|max:100',
+            'note' => 'nullable|string|max:2000',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
+                'message' => 'Ariza ma\'lumotlari to\'g\'ri kiritilmadi.',
                 'errors' => $validator->errors(),
             ], 422);
         }
 
-        $user = $request->user();
+        // Bir talabada bir vaqtda faqat bitta ochiq ariza bo'lishi mumkin.
+        $existing = Application::where('user_id', $user->id)
+            ->whereNotIn('status', ['completed', 'rejected'])
+            ->first();
 
-        if (!$user) {
+        if ($existing) {
             return response()->json([
                 'success' => false,
-                'message' => "Foydalanuvchi aniqlanmadi.",
-            ], 401);
+                'message' => 'Sizda allaqachon ko\'rib chiqilayotgan ariza mavjud.',
+                'data' => $existing,
+            ], 409);
         }
 
-        $announcement = Announcement::create([
-            'title' => $request->input('title'),
-            'message' => $request->input('message'),
-            'target_hostel' => $request->input('target_hostel', 'all'),
-            'target_role' => $request->input('target_role', 'all'),
-            'created_by' => $user->id,
+        $application = Application::create([
+            'user_id' => $user->id,
+            'status' => 'submitted',
+            'step' => 2,
+            'has_social_benefit' => $request->boolean('has_social_benefit'),
+            'benefit_type' => $request->benefit_type,
+            'note' => $request->note,
         ]);
-
-        $studentsQuery = User::query();
-
-        /*
-         * Agar tizimdagi talabalar role = talaba bo'lsa,
-         * shu foydalanuvchilar tanlanadi.
-         */
-        $studentsQuery->where('role', 'talaba');
-
-        /*
-         * Hostel bo'yicha filtrlash.
-         */
-        if (
-            $request->filled('target_hostel') &&
-            $request->input('target_hostel') !== 'all'
-        ) {
-            $studentsQuery->where(
-                'hostel',
-                $request->input('target_hostel')
-            );
-        }
-
-        /*
-         * Role bo'yicha qo'shimcha filtrlash.
-         */
-        if (
-            $request->filled('target_role') &&
-            $request->input('target_role') !== 'all'
-        ) {
-            $studentsQuery->where(
-                'role',
-                $request->input('target_role')
-            );
-        }
-
-        $users = $studentsQuery->get();
-
-        foreach ($users as $targetUser) {
-            Notification::create([
-                'user_id' => $targetUser->id,
-                'title' => $announcement->title,
-                'message' => $announcement->message,
-                'type' => 'announcement',
-                'is_read' => false,
-            ]);
-        }
-
-        $announcement->load('creator');
 
         return response()->json([
             'success' => true,
-            'message' => "E'lon muvaffaqiyatli yaratildi va bildirishnomalar yuborildi.",
-            'data' => $announcement,
+            'message' => 'Arizangiz qabul qilindi.',
+            'data' => $application->load(['user', 'hostel', 'room']),
         ], 201);
+    }
+
+    /**
+     * Bitta arizani ko'rish.
+     */
+    public function show(Request $request, string $id)
+    {
+        $application = Application::with(['user', 'hostel', 'room', 'reviewer'])
+            ->find($id);
+
+        if (!$application) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ariza topilmadi.',
+            ], 404);
+        }
+
+        if (
+            !$this->isReviewer($request)
+            && $application->user_id !== $request->user()->id
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu arizani ko\'rish uchun ruxsat yo\'q.',
+            ], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $application,
+        ]);
+    }
+
+    /**
+     * Arizani ko'rib chiqish — status/bosqich o'zgartirish (mudir).
+     */
+    public function update(Request $request, string $id)
+    {
+        $application = Application::find($id);
+
+        if (!$application) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ariza topilmadi.',
+            ], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'status' => 'required|string|in:submitted,reviewing,assigned,payment_pending,approved,rejected,completed',
+            'step' => 'nullable|integer|min:1|max:5',
+            'hostel_id' => 'nullable|uuid|exists:hostels,id',
+            'room_id' => 'nullable|uuid|exists:rooms,id',
+            'assignment_type' => 'nullable|string|in:university,avto_yol,med_college,navoi_object',
+            'assignment_message' => 'nullable|string|max:2000',
+            'note' => 'nullable|string|max:2000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ma\'lumotlar xato kiritildi.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Status bo'yicha bosqichni avtomatik hisoblaymiz, agar
+        // frontend uni alohida yubormagan bo'lsa.
+        $stepByStatus = [
+            'submitted' => 2,
+            'reviewing' => 2,
+            'assigned' => 3,
+            'payment_pending' => 4,
+            'approved' => 4,
+            'completed' => 5,
+        ];
+
+        $data = $request->only([
+            'status',
+            'hostel_id',
+            'room_id',
+            'assignment_type',
+            'assignment_message',
+            'note',
+        ]);
+
+        $data['step'] = $request->filled('step')
+            ? $request->integer('step')
+            : ($stepByStatus[$request->status] ?? $application->step);
+
+        $data['reviewed_by'] = $request->user()->id;
+        $data['reviewed_at'] = now();
+
+        if ($request->status === 'assigned') {
+            $data['assigned_at'] = now();
+        }
+
+        $application->update($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ariza holati yangilandi.',
+            'data' => $application->fresh()->load(['user', 'hostel', 'room', 'reviewer']),
+        ]);
+    }
+
+    /**
+     * Arizani o'chirish.
+     */
+    public function destroy(Request $request, string $id)
+    {
+        $application = Application::find($id);
+
+        if (!$application) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ariza topilmadi.',
+            ], 404);
+        }
+
+        $application->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ariza o\'chirildi.',
+        ]);
     }
 }

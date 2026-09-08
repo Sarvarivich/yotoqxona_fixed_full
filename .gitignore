@@ -31,3 +31,10 @@ Thumbs.db
 # Temporary files
 .temp_patch_note.txt
 *.log
+assets/lib/
+assets/android/
+assets/build/
+assets/node_modules/
+**/ephemeral/
+analyze.txt
+*-firebase-adminsdk-*.json

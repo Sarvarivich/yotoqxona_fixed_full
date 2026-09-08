@@ -97,7 +97,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Bildirishnoma o'chirildi.',
+            'message' => 'Bildirishnoma o\'chirildi.',
         ]);
     }
 

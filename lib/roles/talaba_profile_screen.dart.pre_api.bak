@@ -912,11 +912,7 @@ class _TopBar extends StatelessWidget {
 }
 
 // в”Ђв”Ђв”Ђ Notification Bell (unread badge) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
-// Bildirishnoma qo'ng'irog'i - o'qilmagan xabarlar sonini ko'rsatadi.
-// Ilgari Firestore StreamBuilder orqali real vaqtda sanardi;
-// endi Laravel API'dan bir marta yuklanadi va ro'yxatdan
-// qaytilganda qayta hisoblanadi.
-class _NotificationBell extends StatefulWidget {
+class _NotificationBell extends StatelessWidget {
   final String userId;
   final String hostel;
 
@@ -926,102 +922,79 @@ class _NotificationBell extends StatefulWidget {
   });
 
   @override
-  State<_NotificationBell> createState() => _NotificationBellState();
-}
-
-class _NotificationBellState extends State<_NotificationBell> {
-  int _unreadCount = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUnreadCount();
-  }
-
-  Future<void> _loadUnreadCount() async {
-    try {
-      final items = await ApiService().getNotifications();
-      if (!mounted) return;
-
-      // Backend 'is_read' maydonini qaytaradi. Eski Firestore
-      // ma'lumotlarida 'isRead' bo'lishi mumkin - ikkalasini tekshiramiz.
-      final count = items.where((n) {
-        if (n is! Map) return false;
-        final read = n['is_read'] ?? n['isRead'] ?? false;
-        return read == false || read == 0;
-      }).length;
-
-      setState(() => _unreadCount = count);
-    } catch (e) {
-      debugPrint('Bildirishnomalarni yuklashda xatolik: $e');
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => BildirishnomalarList(
-              userId: widget.userId,
-              hostel: widget.hostel,
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('bildirishnomalar')
+          .where('userId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BildirishnomalarList(
+                  userId: userId,
+                  hostel: hostel,
+                ),
+              ),
+            );
+          },
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.notifications_outlined,
+                  size: 19,
+                  color: _C.soft,
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    top: 4,
+                    right: 5,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 1),
+                      constraints:
+                          const BoxConstraints(minWidth: 15, minHeight: 15),
+                      decoration: BoxDecoration(
+                        color: _C.pink,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: const Color(0xFF1E1B2E),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        unreadCount > 9 ? '9+' : '$unreadCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         );
-        // Ro'yxatdan qaytgach sonni yangilaymiz.
-        _loadUnreadCount();
       },
-      child: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            const Icon(
-              Icons.notifications_outlined,
-              size: 19,
-              color: _C.soft,
-            ),
-            if (_unreadCount > 0)
-              Positioned(
-                top: 4,
-                right: 5,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 4, vertical: 1),
-                  constraints:
-                      const BoxConstraints(minWidth: 15, minHeight: 15),
-                  decoration: BoxDecoration(
-                    color: _C.pink,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: const Color(0xFF1E1B2E),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Text(
-                    _unreadCount > 9 ? '9+' : '$_unreadCount',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      height: 1.2,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }
