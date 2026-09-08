@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const String baseUrl =
-      'http://127.0.0.1:8000/api';
+      'https://web-production-53ebe.up.railway.app/api';
 
   static const Duration _timeout = Duration(seconds: 30);
   static const String _tokenKey = 'sanctum_token';
@@ -187,7 +187,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
+      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -213,7 +213,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
+      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -239,7 +239,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
+      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -265,7 +265,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
+      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -291,7 +291,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
+      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -757,7 +757,7 @@ class ApiService {
       return Uint8List(0);
     } on SocketException {
       throw ApiException(
-        message: 'Internet bilan bogвЂlanib boвЂlmadi.',
+        message: 'Internet bilan bog‘lanib bo‘lmadi.',
       );
     } on TimeoutException {
       throw ApiException(
@@ -810,7 +810,7 @@ class ApiService {
       return _handle(response);
     } on SocketException {
       throw ApiException(
-        message: 'Internet bilan bogвЂlanib boвЂlmadi.',
+        message: 'Internet bilan bog‘lanib bo‘lmadi.',
       );
     } on TimeoutException {
       throw ApiException(
