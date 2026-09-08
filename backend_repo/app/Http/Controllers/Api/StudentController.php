@@ -11,11 +11,51 @@ use Illuminate\Support\Facades\Validator;
 class StudentController extends Controller
 {
     /**
-     * Talabalar va foydalanuvchilar ro'yxati
+     * Tahrirlashda ruxsat etilgan maydonlar.
+     *
+     * MUHIM: 'role' va 'is_active' bu ro'yxatda ATAYLAB yo'q — ular
+     * alohida tekshiruvdan keyin qo'shiladi. Ilgari bu metod
+     * $request->except(['password']) bilan barcha maydonni ko'r-ko'rona
+     * yozardi, shuning uchun mudir {"role":"superAdmin"} yuborib o'zini
+     * ko'tara olardi.
+     */
+    private const TAHRIRLASH_MUMKIN = [
+        'full_name',
+        'email',
+        'phone',
+        'faculty',
+        'course',
+        'group_name',
+        'hostel',
+        'passport_id',
+        'jshshir',
+        'region',
+        'district',
+    ];
+
+    /**
+     * Talabalar va foydalanuvchilar ro'yxati.
+     *
+     * Mudir faqat o'z binosidagi foydalanuvchilarni ko'radi.
      */
     public function index(Request $request)
     {
+        $user = $request->user();
+
+        if ($user->cannot('viewAny', User::class)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ro\'yxatni ko\'rish uchun ruxsat yo\'q.',
+            ], 403);
+        }
+
         $query = User::with(['activeRoomAssignment.room.hostel']);
+
+        // Mudir o'z binosi bilan cheklanadi. Moliyachi to'lovlar uchun
+        // barchani ko'rishi kerak, admin va superAdmin uchun cheklov yo'q.
+        if ($user->role === 'mudir' && !empty($user->hostel)) {
+            $query->where('hostel', $user->hostel);
+        }
 
         if ($request->filled('role')) {
             $query->where('role', $request->role);
@@ -44,23 +84,42 @@ class StudentController extends Controller
             });
         }
 
-        $students = $query->orderBy('full_name', 'asc')->get();
+        $query->orderBy('full_name', 'asc');
+
+        // Paginatsiya ixtiyoriy: per_page berilganda sahifalanadi,
+        // berilmaganda eski xatti-harakat saqlanadi (to'liq massiv).
+        // Bu mavjud Flutter ekranlarini buzmaydi.
+        //
+        // 3000 foydalanuvchida per_page'siz so'rov og'ir bo'ladi —
+        // frontend ko'chirilgach bu shart olib tashlanadi va
+        // paginatsiya majburiy qilinadi.
+        if ($request->filled('per_page')) {
+            $perPage = min(max($request->integer('per_page'), 1), 100);
+
+            return response()->json([
+                'success' => true,
+                'data' => $query->paginate($perPage),
+            ]);
+        }
 
         return response()->json([
             'success' => true,
-            'data' => $students,
+            'data' => $query->get(),
         ]);
     }
 
     /**
-     * Yangi foydalanuvchi qo'shish (Admin / Mudir)
+     * Yangi foydalanuvchi qo'shish.
+     *
+     * Talaba hisobini mudir ham ocha oladi, xodim hisobini esa
+     * faqat superAdmin.
      */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'full_name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email',
-            'password' => 'required|string|min:6',
+            'password' => 'required|string|min:8',
             'role' => 'required|string|in:talaba,mudir,moliyachi,admin,superAdmin',
             'hostel' => 'nullable|string|in:boys,girls',
             'phone' => 'nullable|string|max:30',
@@ -81,12 +140,29 @@ class StudentController extends Controller
             ], 422);
         }
 
+        $actor = $request->user();
+
+        if ($actor->cannot('create', [User::class, $request->role])) {
+            return response()->json([
+                'success' => false,
+                'message' => $request->role === 'talaba'
+                    ? 'Foydalanuvchi yaratish uchun ruxsat yo\'q.'
+                    : 'Xodim hisobini faqat superAdmin ocha oladi.',
+            ], 403);
+        }
+
+        // Mudir faqat o'z binosiga talaba qo'sha oladi.
+        $hostel = $request->hostel ?? 'boys';
+        if ($actor->role === 'mudir' && !empty($actor->hostel)) {
+            $hostel = $actor->hostel;
+        }
+
         $user = User::create([
             'full_name' => trim($request->full_name),
             'email' => trim(strtolower($request->email)),
             'password' => Hash::make($request->password),
             'role' => $request->role,
-            'hostel' => $request->hostel ?? 'boys',
+            'hostel' => $hostel,
             'phone' => $request->phone ?? '+998900000000',
             'faculty' => $request->faculty,
             'course' => $request->course,
@@ -95,7 +171,7 @@ class StudentController extends Controller
             'jshshir' => $request->jshshir,
             'region' => $request->region,
             'district' => $request->district,
-            'registered_by' => 'admin',
+            'registered_by' => $actor->id,
             'is_active' => true,
         ]);
 
@@ -107,9 +183,9 @@ class StudentController extends Controller
     }
 
     /**
-     * Bitta foydalanuvchini ko'rish
+     * Bitta foydalanuvchini ko'rish.
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $user = User::with([
             'activeRoomAssignment.room.hostel',
@@ -119,7 +195,17 @@ class StudentController extends Controller
         ])->find($id);
 
         if (!$user) {
-            return response()->json(['message' => 'Foydalanuvchi topilmadi.'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Foydalanuvchi topilmadi.',
+            ], 404);
+        }
+
+        if ($request->user()->cannot('view', $user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu foydalanuvchini ko\'rish uchun ruxsat yo\'q.',
+            ], 403);
         }
 
         return response()->json([
@@ -129,13 +215,25 @@ class StudentController extends Controller
     }
 
     /**
-     * Foydalanuvchini tahrirlash
+     * Foydalanuvchini tahrirlash.
      */
     public function update(Request $request, $id)
     {
         $user = User::find($id);
         if (!$user) {
-            return response()->json(['message' => 'Foydalanuvchi topilmadi.'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Foydalanuvchi topilmadi.',
+            ], 404);
+        }
+
+        $actor = $request->user();
+
+        if ($actor->cannot('update', $user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu foydalanuvchini tahrirlash uchun ruxsat yo\'q.',
+            ], 403);
         }
 
         $validator = Validator::make($request->all(), [
@@ -145,14 +243,14 @@ class StudentController extends Controller
             'faculty' => 'nullable|string',
             'course' => 'nullable|integer',
             'group_name' => 'nullable|string',
-            'hostel' => 'nullable|string',
-            'role' => 'nullable|string',
+            'hostel' => 'nullable|string|in:boys,girls',
+            'role' => 'nullable|string|in:talaba,mudir,moliyachi,admin,superAdmin',
             'passport_id' => 'nullable|string',
             'jshshir' => 'nullable|string',
             'region' => 'nullable|string',
             'district' => 'nullable|string',
             'is_active' => 'nullable|boolean',
-            'password' => 'nullable|string|min:6',
+            'password' => 'nullable|string|min:8',
         ]);
 
         if ($validator->fails()) {
@@ -162,9 +260,58 @@ class StudentController extends Controller
             ], 422);
         }
 
-        $data = $request->except(['password']);
+        // Faqat ruxsat etilgan maydonlar olinadi. Bu yerda 'role',
+        // 'is_active' va 'password' YO'Q — ular quyida alohida
+        // tekshiruvdan o'tadi.
+        $data = $request->only(self::TAHRIRLASH_MUMKIN);
+
+        // Rolni o'zgartirish — faqat superAdmin.
+        if ($request->filled('role') && $request->role !== $user->role) {
+            if ($actor->cannot('changeRole', User::class)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Rolni faqat superAdmin o\'zgartira oladi.',
+                ], 403);
+            }
+            $data['role'] = $request->role;
+        }
+
+        // Hisobni bloklash yoki ochish.
+        if ($request->has('is_active')) {
+            if ($actor->id === $user->id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'O\'z hisobingiz holatini o\'zgartira olmaysiz.',
+                ], 403);
+            }
+            if (!in_array($actor->role, ['mudir', 'admin', 'superAdmin'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Hisob holatini o\'zgartirish uchun ruxsat yo\'q.',
+                ], 403);
+            }
+            $data['is_active'] = $request->boolean('is_active');
+        }
+
+        // Parolni bu yo'l bilan o'zgartirish mumkin emas.
+        // O'z paroli uchun: POST /api/change-password (joriy parol so'raladi)
+        // Boshqa foydalanuvchi uchun: PUT /api/students/{id}/password
         if ($request->filled('password')) {
-            $data['password'] = Hash::make($request->password);
+            return response()->json([
+                'success' => false,
+                'message' => 'Parolni bu yerda o\'zgartirib bo\'lmaydi. '
+                    . '/api/change-password yoki /api/students/{id}/password dan foydalaning.',
+            ], 422);
+        }
+
+        // Mudir talabani boshqa binoga ko'chira olmaydi.
+        if (
+            isset($data['hostel'])
+            && $actor->role === 'mudir'
+            && !empty($actor->hostel)
+            && $data['hostel'] !== $actor->hostel
+        ) {
+            unset($data['hostel']);
         }
 
         $user->update($data);
@@ -172,18 +319,28 @@ class StudentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Ma\'lumotlar muvaffaqiyatli yangilandi.',
-            'data' => $user,
+            'data' => $user->fresh(),
         ]);
     }
 
     /**
-     * Foydalanuvchini o'chirish
+     * Foydalanuvchini o'chirish.
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $user = User::find($id);
         if (!$user) {
-            return response()->json(['message' => 'Foydalanuvchi topilmadi.'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Foydalanuvchi topilmadi.',
+            ], 404);
+        }
+
+        if ($request->user()->cannot('delete', $user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu foydalanuvchini o\'chirish uchun ruxsat yo\'q.',
+            ], 403);
         }
 
         $user->tokens()->delete();
@@ -196,17 +353,27 @@ class StudentController extends Controller
     }
 
     /**
-     * Admin tomonidan foydalanuvchi parolini yangilash
+     * Admin tomonidan foydalanuvchi parolini majburan yangilash.
      */
     public function updatePassword(Request $request, $id)
     {
         $user = User::find($id);
         if (!$user) {
-            return response()->json(['message' => 'Foydalanuvchi topilmadi.'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Foydalanuvchi topilmadi.',
+            ], 404);
+        }
+
+        if ($request->user()->cannot('resetPassword', $user)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu foydalanuvchining parolini almashtirish uchun ruxsat yo\'q.',
+            ], 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'new_password'              => 'required|string|min:6|confirmed',
+            'new_password'              => 'required|string|min:8|confirmed',
             'new_password_confirmation' => 'required|string',
         ]);
 
@@ -219,6 +386,9 @@ class StudentController extends Controller
 
         $user->password = Hash::make($request->new_password);
         $user->save();
+
+        // Parol almashgach eski tokenlar bekor qilinadi.
+        $user->tokens()->delete();
 
         return response()->json([
             'success' => true,
