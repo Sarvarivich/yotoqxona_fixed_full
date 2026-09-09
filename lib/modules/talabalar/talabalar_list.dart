@@ -67,9 +67,7 @@ class _TalabalarListState extends State<TalabalarList> {
     _selectedHostel =
         (widget.hostel.trim().isEmpty ? 'boys' : widget.hostel.trim())
             .toLowerCase();
-    _searchController.addListener(() {
-      setState(() => _searchQuery = _searchController.text);
-    });
+    _searchController.addListener(_onSearchChanged);
     _loadData();
   }
 
