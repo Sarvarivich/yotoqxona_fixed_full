@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:yotoqxona/modules/models/user_model.dart';
@@ -46,6 +47,15 @@ class _TalabalarListState extends State<TalabalarList> {
   bool _isLoading = true;
   String? _errorMessage;
   List<UserModel> _allUsers = [];
+
+  // --- Sahifalash holati ---
+  final ScrollController _scrollController = ScrollController();
+  static const int _perPage = 10;
+  int _page = 1;
+  int _total = 0;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+  Timer? _searchDebounce;
   final Map<String, String> _roomLabelById = {};
   final Set<String> _assignedIds = {};
 
@@ -63,6 +73,86 @@ class _TalabalarListState extends State<TalabalarList> {
     _loadData();
   }
 
+  // Qidiruv: har bosilgan harfda so'rov yubormaslik uchun
+  // 400 ms kutamiz (debounce). 2500 talabada bu muhim.
+  void _onSearchChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      setState(() => _searchQuery = _searchController.text);
+      _loadData();
+    });
+  }
+
+  // Ro'yxat oxiriga yaqinlashganda keyingi sahifani yuklaymiz.
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final chegara = _scrollController.position.maxScrollExtent - 300;
+    if (_scrollController.position.pixels >= chegara) {
+      _loadMore();
+    }
+  }
+
+  // Keyingi sahifa.
+  Future<void> _loadMore() async {
+    if (_isLoadingMore || !_hasMore || _isLoading) return;
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final javob = await _apiService.getStudentsPaged(
+        page: _page + 1,
+        perPage: _perPage,
+        search: _searchQuery,
+      );
+
+      final royxat = javob['data'] as List<dynamic>;
+      final meta = javob['meta'] as Map<String, dynamic>;
+
+      if (!mounted) return;
+
+      final yangilar = <UserModel>[];
+      for (final s in royxat) {
+        if (s is Map) {
+          final userMap = Map<String, dynamic>.from(s);
+          _xonaMalumotiniYig(userMap);
+          yangilar.add(UserModel.fromJson(userMap));
+        }
+      }
+
+      setState(() {
+        _allUsers.addAll(yangilar);
+        _page = (meta['current_page'] as num?)?.toInt() ?? (_page + 1);
+        final oxirgi = (meta['last_page'] as num?)?.toInt() ?? _page;
+        _hasMore = _page < oxirgi;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingMore = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Keyingi sahifani yuklab bo\'lmadi: $e')),
+      );
+    }
+  }
+
+  // Xona ma'lumotini _roomLabelById va _assignedIds ga yozadi.
+  void _xonaMalumotiniYig(Map<String, dynamic> userMap) {
+    final activeRoom =
+        userMap['active_room_assignment'] ?? userMap['activeRoomAssignment'];
+    if (activeRoom is Map && activeRoom['room'] is Map) {
+      final uId = userMap['id']?.toString() ?? '';
+      if (uId.isNotEmpty) {
+        _assignedIds.add(uId);
+        final roomNum = activeRoom['room']['room_number'] ??
+            activeRoom['room']['roomNumber'] ??
+            '-';
+        final floor = activeRoom['room']['floor'] ?? '-';
+        _roomLabelById[uId] = "$roomNum-xona ($floor-qavat)";
+      }
+    }
+  }
+
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
@@ -70,7 +160,19 @@ class _TalabalarListState extends State<TalabalarList> {
     });
 
     try {
-      final studentsData = await _apiService.getStudents();
+      // Birinchi sahifa. Qolgani _loadMore() orqali qo'shiladi.
+      _page = 1;
+      _hasMore = true;
+      final javob = await _apiService.getStudentsPaged(
+        page: 1,
+        perPage: _perPage,
+        search: _searchQuery,
+      );
+      final studentsData = javob['data'] as List<dynamic>;
+      final meta = javob['meta'] as Map<String, dynamic>;
+      _total = (meta['total'] as num?)?.toInt() ?? studentsData.length;
+      final oxirgiSahifa = (meta['last_page'] as num?)?.toInt() ?? 1;
+      _hasMore = 1 < oxirgiSahifa;
       final assignmentsData = await _apiService.getRoomAssignments();
 
       final labelById = <String, String>{};
@@ -136,6 +238,8 @@ class _TalabalarListState extends State<TalabalarList> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 

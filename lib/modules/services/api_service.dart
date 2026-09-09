@@ -187,7 +187,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
+      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -213,7 +213,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
+      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -239,7 +239,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
+      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -265,7 +265,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
+      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -291,7 +291,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bog‘lanib bo‘lmadi.');
+      throw ApiException(message: 'Internet bilan bogвЂlanib boвЂlmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -370,6 +370,47 @@ class ApiService {
 
   Future<List<dynamic>> getStudents() async {
     return _asList(await get('students'));
+  }
+
+  /// Sahifalangan talabalar ro'yxati.
+  ///
+  /// Qaytaradi: { 'data': List<dynamic>, 'meta': Map }
+  /// meta ichida: current_page, last_page, per_page, total
+  ///
+  /// 2500 talabada hammasini bir marta yuklash mumkin emas вЂ”
+  /// javob hajmi bir necha megabayt bo'ladi va ilova qotadi.
+  Future<Map<String, dynamic>> getStudentsPaged({
+    int page = 1,
+    int perPage = 50,
+    String? search,
+    String? role,
+    String? hostel,
+  }) async {
+    final parametrlar = <String, String>{
+      'page': page.toString(),
+      'per_page': perPage.toString(),
+    };
+
+    if (search != null && search.trim().isNotEmpty) {
+      parametrlar['search'] = search.trim();
+    }
+    if (role != null && role.isNotEmpty) {
+      parametrlar['role'] = role;
+    }
+    if (hostel != null && hostel.isNotEmpty) {
+      parametrlar['hostel'] = hostel;
+    }
+
+    final endpoint = 'students?${Uri(queryParameters: parametrlar).query}';
+    final javob = await get(endpoint);
+
+    return {
+      'data':
+          javob['data'] is List ? javob['data'] as List<dynamic> : <dynamic>[],
+      'meta': javob['meta'] is Map
+          ? Map<String, dynamic>.from(javob['meta'] as Map)
+          : <String, dynamic>{},
+    };
   }
 
   Future<Map<String, dynamic>> getStudent(String id) {
@@ -757,7 +798,7 @@ class ApiService {
       return Uint8List(0);
     } on SocketException {
       throw ApiException(
-        message: 'Internet bilan bog‘lanib bo‘lmadi.',
+        message: 'Internet bilan bogвЂlanib boвЂlmadi.',
       );
     } on TimeoutException {
       throw ApiException(
@@ -810,7 +851,7 @@ class ApiService {
       return _handle(response);
     } on SocketException {
       throw ApiException(
-        message: 'Internet bilan bog‘lanib bo‘lmadi.',
+        message: 'Internet bilan bogвЂlanib boвЂlmadi.',
       );
     } on TimeoutException {
       throw ApiException(

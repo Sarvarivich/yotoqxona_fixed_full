@@ -91,12 +91,17 @@ class StudentController extends Controller
 
         if ($request->filled('search')) {
             $search = trim($request->search);
-            $query->where(function ($q) use ($search) {
-                $q->where('full_name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%")
-                  ->orWhere('passport_id', 'like', "%{$search}%")
-                  ->orWhere('jshshir', 'like', "%{$search}%");
+            // PostgreSQL'da LIKE katta-kichik harfni farqlaydi,
+            // SQLite'da esa yo'q. LOWER() bilan ikkala bazada ham
+            // bir xil, registrga sezgir bo'lmagan qidiruv olamiz.
+            $kichik = '%' . mb_strtolower($search) . '%';
+
+            $query->where(function ($q) use ($kichik) {
+                $q->whereRaw('LOWER(full_name) LIKE ?', [$kichik])
+                  ->orWhereRaw('LOWER(email) LIKE ?', [$kichik])
+                  ->orWhereRaw('LOWER(phone) LIKE ?', [$kichik])
+                  ->orWhereRaw('LOWER(passport_id) LIKE ?', [$kichik])
+                  ->orWhereRaw('LOWER(jshshir) LIKE ?', [$kichik]);
             });
         }
 
