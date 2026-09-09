@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserListResource;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -34,9 +36,23 @@ class StudentController extends Controller
     ];
 
     /**
+     * Paginatsiyasiz so'rovda qaytariladigan eng ko'p yozuv soni.
+     *
+     * Eski Flutter ekranlari 'per_page' yubormaydi va to'liq massiv
+     * kutadi. Ular buzilmasin uchun massiv qaytaramiz, lekin 2500 ta
+     * yozuv bir so'rovda kelmasligi uchun cheklab qo'yamiz.
+     *
+     * Frontend cheksiz aylantirishga o'tgach bu shart olib tashlanadi
+     * va paginatsiya majburiy qilinadi.
+     */
+    private const CHEKSIZ_SORAGANDA_LIMIT = 100;
+
+    /**
      * Talabalar va foydalanuvchilar ro'yxati.
      *
      * Mudir faqat o'z binosidagi foydalanuvchilarni ko'radi.
+     * Javobda shaxsiy maydonlar (JSHSHIR, pasport, manzil) yo'q —
+     * ular faqat show() da, UserResource orqali beriladi.
      */
     public function index(Request $request)
     {
@@ -49,7 +65,7 @@ class StudentController extends Controller
             ], 403);
         }
 
-        $query = User::with(['activeRoomAssignment.room.hostel']);
+        $query = User::with(['activeRoomAssignment.room']);
 
         // Mudir o'z binosi bilan cheklanadi. Moliyachi to'lovlar uchun
         // barchani ko'rishi kerak, admin va superAdmin uchun cheklov yo'q.
@@ -86,25 +102,38 @@ class StudentController extends Controller
 
         $query->orderBy('full_name', 'asc');
 
-        // Paginatsiya ixtiyoriy: per_page berilganda sahifalanadi,
-        // berilmaganda eski xatti-harakat saqlanadi (to'liq massiv).
-        // Bu mavjud Flutter ekranlarini buzmaydi.
-        //
-        // 3000 foydalanuvchida per_page'siz so'rov og'ir bo'ladi —
-        // frontend ko'chirilgach bu shart olib tashlanadi va
-        // paginatsiya majburiy qilinadi.
+        // per_page berilsa — to'liq sahifalangan javob (meta bilan).
         if ($request->filled('per_page')) {
             $perPage = min(max($request->integer('per_page'), 1), 100);
+            $sahifa = $query->paginate($perPage);
 
             return response()->json([
                 'success' => true,
-                'data' => $query->paginate($perPage),
+                'data' => UserListResource::collection($sahifa->items()),
+                'meta' => [
+                    'current_page' => $sahifa->currentPage(),
+                    'last_page' => $sahifa->lastPage(),
+                    'per_page' => $sahifa->perPage(),
+                    'total' => $sahifa->total(),
+                ],
             ]);
         }
 
+        // per_page berilmasa — eski shakl (oddiy massiv), lekin cheklangan.
+        $jami = (clone $query)->count();
+        $royxat = $query->limit(self::CHEKSIZ_SORAGANDA_LIMIT)->get();
+
         return response()->json([
             'success' => true,
-            'data' => $query->get(),
+            'data' => UserListResource::collection($royxat),
+            'meta' => [
+                'total' => $jami,
+                'returned' => $royxat->count(),
+                'limited' => $jami > self::CHEKSIZ_SORAGANDA_LIMIT,
+                'hint' => $jami > self::CHEKSIZ_SORAGANDA_LIMIT
+                    ? 'Barcha yozuvlarni olish uchun ?per_page=50&page=1 ishlating.'
+                    : null,
+            ],
         ]);
     }
 
@@ -178,7 +207,7 @@ class StudentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Foydalanuvchi muvaffaqiyatli yaratildi.',
-            'data' => $user,
+            'data' => new UserResource($user),
         ], 201);
     }
 
@@ -210,7 +239,7 @@ class StudentController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $user,
+            'data' => new UserResource($user),
         ]);
     }
 
@@ -319,7 +348,7 @@ class StudentController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Ma\'lumotlar muvaffaqiyatli yangilandi.',
-            'data' => $user->fresh(),
+            'data' => new UserResource($user->fresh()->load('activeRoomAssignment.room')),
         ]);
     }
 
