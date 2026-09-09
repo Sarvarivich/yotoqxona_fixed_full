@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
@@ -200,7 +200,7 @@ class StudentController extends Controller
             'jshshir' => $request->jshshir,
             'region' => $request->region,
             'district' => $request->district,
-            'registered_by' => $actor->id,
+            'registered_by' => $actor->role,
             'is_active' => true,
         ]);
 

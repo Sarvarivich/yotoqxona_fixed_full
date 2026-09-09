@@ -259,9 +259,22 @@ class AuthService {
   }
 
   // 2. ADMIN/MUDIR ICHKARIDAN YANGI FOYDALANUVCHI QO'SHISHI
-  // ✅ Ikkinchi (vaqtinchalik) Firebase ilova nusxasidan foydalanadi —
-  // shunda yangi hisob yaratilganda hozir tizimga kirgan admin/mudir
-  // hisobidan avtomatik chiqib ketmaydi.
+  //
+  // ✅ Endi Laravel API orqali ishlaydi (POST /api/students).
+  //
+  // Ilgari bu metod ikkinchi (vaqtinchalik) Firebase ilova nusxasini
+  // ochib, Firebase Auth'da hisob yaratardi va profilni Firestore'ga
+  // yozardi. Bu murakkab edi va uch muammosi bor edi:
+  //   1. Firestore yozish muvaffaqiyatsiz tugasa "orphan" Auth hisobi
+  //      qolib ketardi — hisob bor, profil yo'q.
+  //   2. Windows va boshqa Firebase sozlanmagan platformalarda
+  //      umuman ishlamas edi.
+  //   3. Ma'lumot Laravel bazasiga tushmasdi.
+  //
+  // Laravel tomonida hammasi bitta so'rovda va bitta tranzaksiyada
+  // bajariladi. Ruxsatlar ham server tomonda tekshiriladi:
+  // mudir faqat talaba qo'sha oladi, xodim hisobini faqat superAdmin
+  // ocha oladi (qarang: UserPolicy::create).
   static Future<bool> addUserByAdmin({
     required BuildContext context,
     required String fullName,
@@ -274,122 +287,88 @@ class AuthService {
     String? course,
     Map<String, dynamic>? extraData,
   }) async {
-    FirebaseApp? secondaryApp;
     try {
-      final cleanEmail = email.trim().toLowerCase();
-      final cleanPassword = password.trim();
+      final body = <String, dynamic>{
+        'full_name': fullName.trim(),
+        'email': email.trim().toLowerCase(),
+        'password': password.trim(),
+        'role': role.name,
+        'hostel': hostel,
+        if (phoneNumber != null && phoneNumber.trim().isNotEmpty)
+          'phone': phoneNumber.trim(),
+        if (faculty != null && faculty.isNotEmpty) 'faculty': faculty,
+        // Backend 'course' ni butun son sifatida kutadi, ekran esa
+        // matn ("1-kurs" yoki "1") berishi mumkin — raqamini ajratamiz.
+        if (course != null && course.isNotEmpty)
+          'course': int.tryParse(course.replaceAll(RegExp(r'[^0-9]'), '')),
+        // Admin/superAdmin uchun huquqlar ro'yxati additional_data
+        // ichida saqlanadi.
+        if (extraData != null) 'additional_data': extraData,
+      };
 
-      try {
-        secondaryApp = Firebase.app('SecondaryApp');
-      } catch (_) {
-        secondaryApp = await Firebase.initializeApp(
-          name: 'SecondaryApp',
-          options: Firebase.app().options,
-        );
-      }
+      // null qiymatlarni yubormaymiz — validatsiya ularni rad etishi
+      // mumkin (masalan course ajratib bo'lmasa).
+      body.removeWhere((key, value) => value == null);
 
-      final credential = await FirebaseAuth.instanceFor(app: secondaryApp)
-          .createUserWithEmailAndPassword(
-        email: cleanEmail,
-        password: cleanPassword,
-      );
-      final uid = credential.user!.uid;
-
-      final newUser = UserModel(
-        id: uid,
-        fullName: fullName.trim(),
-        email: cleanEmail,
-        phoneNumber: phoneNumber?.trim() ?? "+998900000000",
-        role: role,
-        hostel: hostel,
-        faculty: faculty,
-        course: course,
-      );
-
-      // ✅ MUAMMO: agar quyidagi Firestore yozish (masalan Security Rules
-      // yoki tarmoq xatosi tufayli) muvaffaqiyatsiz tugasa, Firebase
-      // Authentication'da hisob ALLAQACHON yaratilgan bo'lib qoladi, lekin
-      // "foydalanuvchilar" kolleksiyasida profili bo'lmaydi ("orphan"
-      // hisob). Natijada bu login/parol bilan keyinroq kirishga urinilganda
-      // "Hisob topildi, lekin profil ma'lumotlari yo'q" xatosi chiqadi —
-      // ya'ni tashqi ko'rinishda "hisob yaratilgan, lekin kira bo'lmayabdi"
-      // holati aynan shu yerdan kelib chiqishi mumkin.
-      // ✅ YECHIM: yozishni try/catch bilan o'raymiz va agar u
-      // muvaffaqiyatsiz tugasa, yangi yaratilgan Auth hisobini DARHOL
-      // o'chiramiz (rollback), shunda orphan hisob umuman qolmaydi va
-      // admin xatolikni aniq ko'radi (keyin xohlasa qayta urinib ko'radi).
-      try {
-        // 🕒 "createdAt" — server vaqti, "registeredBy" — bu yerda
-        // Admin/Mudir talabani QO'LDA qo'shayotgani uchun 'admin'.
-        // `extraData` eng oxirida yoziladi, shunda kerak bo'lsa
-        // chaqiruvchi tomon bu ikkalasini ham ustidan yozib
-        // (override) qo'lda boshqacha qiymat bera oladi.
-        await _usersCollection.doc(uid).set({
-          ...newUser.toJson(),
-          'createdAt': FieldValue.serverTimestamp(),
-          'registeredBy': 'admin',
-          if (extraData != null) ...extraData,
-        });
-
-        // ✅ Qo'shimcha xavfsizlik: yozilgandan so'ng darhol o'qib,
-        // haqiqatan saqlanganini tasdiqlaymiz. Ba'zi holatlarda Firestore
-        // "muvaffaqiyatli" javob qaytarsa-da (masalan offline cache),
-        // hujjat serverga yetib bormasligi mumkin.
-        final verifySnap = await _usersCollection.doc(uid).get();
-        if (!verifySnap.exists) {
-          throw Exception(
-              "Profil Firestore'da yaratilmadi (write tasdiqlanmadi).");
-        }
-      } catch (writeError) {
-        // Rollback: Auth hisobini o'chiramiz, shunda orphan hisob qolmaydi
-        try {
-          await credential.user!.delete();
-        } catch (_) {
-          // Agar shu yerda ham xato bo'lsa (masalan qayta autentifikatsiya
-          // talab qilinsa), hech bo'lmasa asl xatoni yuqoriga uzatamiz —
-          // shunda kamida Firebase Console'dan qo'lda tozalash mumkin.
-        }
-        rethrow;
-      }
-
-      await FirebaseAuth.instanceFor(app: secondaryApp).signOut();
-      await secondaryApp.delete();
+      await ApiService().createStudent(body);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text("Yangi foydalanuvchi muvaffaqiyatli qo'shildi!"),
-              backgroundColor: Colors.green),
+            content: Text("Yangi foydalanuvchi muvaffaqiyatli qo'shildi!"),
+            backgroundColor: Colors.green,
+          ),
         );
       }
       return true;
-    } on FirebaseAuthException catch (e) {
-      if (secondaryApp != null) {
-        try {
-          await secondaryApp.delete();
-        } catch (_) {}
-      }
+    } on ApiException catch (e) {
+      // Backend validatsiya xatosini (422) foydalanuvchiga tushunarli
+      // ko'rinishda chiqaramiz: takroriy email, band JSHSHIR, qisqa
+      // parol va hokazo.
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(_friendlyAuthError(e)),
-              backgroundColor: Colors.red),
+            content: Text(_friendlyApiError(e)),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
       return false;
     } catch (e) {
-      if (secondaryApp != null) {
-        try {
-          await secondaryApp.delete();
-        } catch (_) {}
-      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text("Xatolik: $e"),
+            backgroundColor: Colors.red,
+          ),
         );
       }
       return false;
     }
+  }
+
+  // Laravel API xatosini o'zbekcha tushunarli xabarga o'giradi.
+  static String _friendlyApiError(ApiException e) {
+    final matn = e.message.toLowerCase();
+
+    if (matn.contains('email') && matn.contains('taken')) {
+      return "Bu email allaqachon ro'yxatdan o'tgan.";
+    }
+    if (matn.contains('jshshir')) {
+      return "Bu JSHSHIR allaqachon boshqa foydalanuvchiga biriktirilgan.";
+    }
+    if (matn.contains('passport')) {
+      return "Bu pasport raqami allaqachon ro'yxatdan o'tgan.";
+    }
+    if (matn.contains('password') && matn.contains('8')) {
+      return "Parol kamida 8 ta belgidan iborat bo'lishi kerak.";
+    }
+    if (matn.contains('ruxsat') || matn.contains('403')) {
+      return "Bu amalni bajarish uchun sizda ruxsat yo'q.";
+    }
+
+    return e.message;
   }
 
   static Future<void> logout() async {
