@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // SignOut kafolatli ishlashi uchun
 import 'package:yotoqxona/modules/models/tolov_cheklari_screen.dart';
 import '../modules/models/user_model.dart';
@@ -9,6 +8,7 @@ import '../modules/hisobot/dashboard.dart';
 import '../modules/murojaat/murojaatlar_list.dart';
 import '../modules/bildirishnoma/bildirishnoma_yuborish.dart';
 import '../modules/services/auth_service.dart';
+import '../modules/services/api_service.dart';
 import '../roles/admin_add_user_screen.dart'; // Yangi qo'shiladigan sahifa importi
 import '../modules/services/excel_service.dart'; // Papka iyerarxiyasiga qarab bitta nuqta (.) yoki ikkita (..) bo'lishi mumkin
 import '../modules/models/ijtimoiy_imtiyozlar_sahifasi.dart';
@@ -601,18 +601,32 @@ class _AppBarIconBtn extends StatelessWidget {
   }
 }
 
+// Kutilayotgan to'lov cheklari soni.
+// Ilgari Firestore snapshots() bilan real vaqtda sanardi; endi
+// Laravel API'dan bir marta yuklanadi. Real vaqt yo'qoladi, lekin
+// ekran har ochilganda qayta hisoblanadi.
 class _TolovBadgeDot extends StatelessWidget {
   const _TolovBadgeDot();
 
+  Future<int> _kutilayotganlar() async {
+    try {
+      final tolovlar = await ApiService().getPayments();
+      return tolovlar.where((t) {
+        if (t is! Map) return false;
+        final holat = (t['status'] ?? '').toString().toLowerCase();
+        return holat == 'pending';
+      }).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('tolov_cheklari')
-          .where('status', isEqualTo: 'pending')
-          .snapshots(),
+    return FutureBuilder<int>(
+      future: _kutilayotganlar(),
       builder: (context, snap) {
-        final count = snap.data?.docs.length ?? 0;
+        final count = snap.data ?? 0;
         if (count == 0) return const SizedBox(width: 8);
         return Container(
           margin: const EdgeInsets.only(right: 8),
@@ -662,7 +676,10 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
     if (_searchQuery.isEmpty) return _users;
     final query = _searchQuery.toLowerCase();
     return _users.where((user) {
-      final fullName = (user['fullName'] ?? '').toString().toLowerCase();
+      final fullName =
+          (user['full_name'] ?? user['fullName'] ?? '')
+              .toString()
+              .toLowerCase();
       final email = (user['email'] ?? '').toString().toLowerCase();
       return fullName.contains(query) || email.contains(query);
     }).toList();
@@ -687,14 +704,21 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      QuerySnapshot snapshot =
-          await FirebaseFirestore.instance.collection('foydalanuvchilar').get();
+      // Laravel API'dan yuklaymiz. Backend ruxsatni o'zi tekshiradi:
+      // mudir faqat o'z binosini, admin va superAdmin hammasini ko'radi.
+      //
+      // per_page=100 hozircha yetarli. 2500 foydalanuvchida bu ekranga
+      // ham cheksiz aylantirish qo'shish kerak bo'ladi.
+      final javob = await ApiService().getStudentsPaged(
+        page: 1,
+        perPage: 100,
+      );
       if (!mounted) return;
-      _users = snapshot.docs.map((doc) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        data['id'] = doc.id;
-        return data;
-      }).toList();
+
+      _users = (javob['data'] as List<dynamic>)
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
     } catch (e) {
       debugPrint("Xatolik foydalanuvchilarni yuklashda: $e");
     } finally {
@@ -703,20 +727,29 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
   }
 
   Future<void> _changeRole(String userId, String newRole) async {
-    await FirebaseFirestore.instance
-        .collection('foydalanuvchilar')
-        .doc(userId)
-        .update({
-      'role': newRole,
-    });
-    await _loadUsers();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Rol o'zgartirildi"),
-        backgroundColor: Colors.green,
-      ),
-    );
+    // Rolni faqat superAdmin o'zgartira oladi - buni backend
+    // UserPolicy::changeRole() tekshiradi. Bu yerdagi isSuperAdmin
+    // faqat interfeys uchun; haqiqiy himoya server tomonda.
+    try {
+      await ApiService().updateStudent(userId, {'role': newRole});
+      await _loadUsers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Rol o'zgartirildi"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Rolni o'zgartirib bo'lmadi: $e"),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   // O'chirishdan oldin tasdiqlash dialogi.
@@ -765,21 +798,11 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
   Future<void> _deleteUser(String userId, String fullName) async {
     setState(() => _isLoading = true);
     try {
-      final firestore = FirebaseFirestore.instance;
-      final roomsSnap = await firestore
-          .collection('xonalar')
-          .where('studentIds', arrayContains: userId)
-          .get();
-
-      final batch = firestore.batch();
-      for (final roomDoc in roomsSnap.docs) {
-        batch.update(roomDoc.reference, {
-          'studentIds': FieldValue.arrayRemove([userId]),
-          'currentOccupants': FieldValue.increment(-1),
-        });
-      }
-      batch.delete(firestore.collection('foydalanuvchilar').doc(userId));
-      await batch.commit();
+      // Laravel'da xonadan chiqarish alohida qadam emas: bog'lanishlar
+      // (room_students) va tranzaksiya buni server tomonda hal qiladi.
+      // Ruxsatni UserPolicy::delete() tekshiradi - superAdmin hisobini
+      // hech kim o'chira olmaydi, o'zini ham o'chirib bo'lmaydi.
+      await ApiService().deleteStudent(userId);
 
       await _loadUsers();
       if (!mounted) return;
@@ -789,11 +812,12 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
           backgroundColor: Colors.green,
         ),
       );
-    } on FirebaseException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
-      final message = e.code == 'permission-denied'
+      final xato = e.message.toLowerCase();
+      final message = (xato.contains('ruxsat') || xato.contains('403'))
           ? 'Sizda bu foydalanuvchini o\'chirish uchun ruxsat yo\'q.'
-          : 'O\'chirishda xatolik (${e.code}): ${e.message ?? e.code}';
+          : 'O\'chirishda xatolik: ${e.message}';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: Colors.red),
       );
@@ -940,7 +964,8 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
                   itemBuilder: (context, index) {
                     var user = _filteredUsers[index];
                     String currentRole = user['role'] ?? 'talaba';
-                    String fullName = user['fullName'] ?? 'Noma\'lum';
+                    String fullName =
+                        user['full_name'] ?? user['fullName'] ?? 'Noma\'lum';
                     String email = user['email'] ?? '';
 
                     return Container(
@@ -1544,34 +1569,30 @@ class __AdminSettingsTabState extends State<_AdminSettingsTab> {
               Navigator.pop(dialogContext);
               setState(() => _isLoading = true);
 
-              final collections = [
-                'foydalanuvchilar',
-                'xonalar',
-                'murojaatlar',
-                'tolovlar',
-                'bildirishnomalar',
-                'sorovnomalar'
-              ];
+              // ⛔ BU AMAL VAQTINCHA O'CHIRIB QO'YILGAN.
+              //
+              // Ilgari bu tugma Firestore'dagi BARCHA kolleksiyalarni
+              // (foydalanuvchilar, xonalar, murojaatlar, tolovlar,
+              // bildirishnomalar, sorovnomalar) qaytarib bo'lmaydigan
+              // tarzda o'chirib tashlardi.
+              //
+              // Laravel'ga ko'chish davom etayotgan paytda haqiqiy
+              // ma'lumotlarning bir qismi hali Firestore'da turibdi,
+              // shuning uchun bitta tasodifiy bosish butun bazani
+              // yo'q qilishi mumkin edi.
+              //
+              // Kerak bo'lsa: migratsiya tugagach, tasdiqlash so'zini
+              // qo'lda yozdirish (masalan "O'CHIRISH" deb terish) va
+              // faqat superAdmin uchun ochish bilan qayta yoqiladi.
               try {
-                for (var col in collections) {
-                  var snapshot =
-                      await FirebaseFirestore.instance.collection(col).get();
-                  for (var doc in snapshot.docs) {
-                    await doc.reference.delete();
-                  }
-                }
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content: Text("Barcha ma'lumotlar tozalandi"),
-                      backgroundColor: Colors.red),
-                );
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content: Text("Xatolik yuz berdi: $e"),
-                      backgroundColor: Colors.orange),
+                    content: Text(
+                        "Bu amal migratsiya davomida o'chirib qo'yilgan."),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: 4),
+                  ),
                 );
               } finally {
                 if (mounted) setState(() => _isLoading = false);

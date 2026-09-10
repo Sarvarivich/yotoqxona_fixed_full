@@ -553,7 +553,16 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
   }
 
   Widget _buildCheckCard(String id, Map<String, dynamic> d, String status) {
-    final studentName = _str(d['student_name']).isNotEmpty
+    // Laravel bog'langan obyektni qaytaradi: student: { full_name: ... }
+    // Eski Firestore esa student_name / studentName maydonini yozardi.
+    final studentObj = d['student'];
+    final studentFromObj = studentObj is Map
+        ? _str(studentObj['full_name'] ?? studentObj['fullName'])
+        : '';
+
+    final studentName = studentFromObj.isNotEmpty
+        ? studentFromObj
+        : _str(d['student_name']).isNotEmpty
         ? _str(d['student_name'])
         : 'Noma\'lum talaba';
     final fileName = _str(d['receipt_path']).isNotEmpty
