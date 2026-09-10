@@ -65,7 +65,17 @@ class StudentController extends Controller
             ], 403);
         }
 
-        $query = User::with(['activeRoomAssignment.room']);
+        // ?detailed=1 вЂ” to'liq ma'lumot (Excel eksporti uchun).
+        // Bu endpoint faqat xodimlarga ochiq, shuning uchun to'liq
+        // ma'lumot berish xavfsiz. Oddiy ro'yxat esa yengil
+        // UserListResource bilan qaytadi.
+        $toliq = $request->boolean('detailed');
+
+        $query = User::with(
+            $toliq
+                ? ['activeRoomAssignment.room.hostel']
+                : ['activeRoomAssignment.room']
+        );
 
         // Mudir o'z binosi bilan cheklanadi. Moliyachi to'lovlar uchun
         // barchani ko'rishi kerak, admin va superAdmin uchun cheklov yo'q.
@@ -114,7 +124,9 @@ class StudentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => UserListResource::collection($sahifa->items()),
+                'data' => $toliq
+                    ? UserResource::collection($sahifa->items())
+                    : UserListResource::collection($sahifa->items()),
                 'meta' => [
                     'current_page' => $sahifa->currentPage(),
                     'last_page' => $sahifa->lastPage(),
@@ -130,7 +142,9 @@ class StudentController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => UserListResource::collection($royxat),
+            'data' => $toliq
+                ? UserResource::collection($royxat)
+                : UserListResource::collection($royxat),
             'meta' => [
                 'total' => $jami,
                 'returned' => $royxat->count(),

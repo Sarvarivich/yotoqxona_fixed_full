@@ -1,6 +1,6 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import '../models/user_model.dart';
+import 'api_service.dart';
 import 'excel_download.dart';
 
 // Xonaning narxi va o'qish uchun qulay nomi (masalan "101-xona").
@@ -10,11 +10,12 @@ class _RoomInfo {
   const _RoomInfo({required this.label, required this.price});
 }
 
-// Ikkala hostel (o'g'il/qiz bolalar) uchun umumiy, manbasidan qat'iy
-// nazar bir xil ko'rinishdagi eksport qatori. Bu orqali "foydalanuvchilar"
-// (o'zi ro'yxatdan o'tgan, Firebase Auth hisobiga ega) va "girls_students"
-// (Admin/Mudira tomonidan qo'lda qo'shilgan, Auth hisobisiz) talabalari
-// bitta jadvalda bir xil ustunlar bilan chiqariladi.
+// Eksport qatori — barcha talabalar uchun bir xil ko'rinish.
+//
+// Ilgari ikki manba bor edi: "foydalanuvchilar" (o'zi ro'yxatdan
+// o'tganlar) va "girls_students" (qo'lda qo'shilganlar). Laravel'da
+// bunday ajratish yo'q — hamma `users` jadvalida, qizlar esa
+// hostel = 'girls' bilan farqlanadi.
 class _ExportRow {
   final String id;
   final String fullName;
@@ -24,17 +25,16 @@ class _ExportRow {
   final String email;
   final String phoneNumber;
   final String? faculty;
-  final String? course; // Joriy kurs: '1', '2', '3' yoki '4'
+  final String? course;
   final String? hostel;
-  final String? roomId;
+  final String? roomKey; // xona raqami yoki ID
   final DateTime? createdAt;
   final String? registeredBy;
   final String? passportId;
   final String? jshshir;
-  // 🎗️ Ijtimoiy imtiyoz — ro'yxatdan o'tishda tanlangan bo'lsa
   final bool hasSocialBenefit;
-  final String? benefitType; // '1'..'6'
-  final String? lostParentType; // faqat benefitType == '1' uchun: 'ota'/'ona'
+  final String? benefitType;
+  final String? lostParentType;
   final String? deathCertificateUrl;
   final String? benefitDocumentUrl;
 
@@ -49,7 +49,7 @@ class _ExportRow {
     this.faculty,
     this.course,
     this.hostel,
-    this.roomId,
+    this.roomKey,
     this.createdAt,
     this.registeredBy,
     this.passportId,
@@ -63,7 +63,29 @@ class _ExportRow {
 }
 
 class ExcelExportService {
-  // Rol nomini o'qish uchun chiroyli formatga o'giradi.
+  static final ApiService _api = ApiService();
+
+  /// Bitta so'rovda olinadigan eng ko'p yozuv (backend limiti).
+  static const int _perPage = 100;
+
+  // ===================================================================
+  // YORDAMCHI FUNKSIYALAR
+  // ===================================================================
+
+  static String _str(dynamic v) => v?.toString().trim() ?? '';
+
+  static DateTime? _sana(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    return DateTime.tryParse(v.toString());
+  }
+
+  static double _son(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
+
   static String _roleLabel(UserRole role) {
     switch (role) {
       case UserRole.superAdmin:
@@ -79,15 +101,8 @@ class ExcelExportService {
     }
   }
 
-  // Yotoqxona turini o'qish uchun chiroyli formatga o'giradi.
-  // ⚠️ Ilovaning boshqa barcha joylarida (login, dashboard, mudir_screen,
-  // talaba profili va h.k.) "hostel" maydoni bo'sh (null) bo'lsa, u
-  // avtomatik "boys" deb qabul qilinadi (masalan: `user.hostel ?? 'boys'`).
-  // Odatda bu — Firestore'da "hostel" maydoni umuman yozilmagan eski
-  // hisoblar (masalan superAdmin/admin/mudir sifatida ilova boshida qo'lda
-  // yaratilgan yozuvlar). Shu sababli bu yerda ham xuddi shu qoidaga rioya
-  // qilinadi — aks holda ular "Ko'rsatilmagan" bo'lib chiqib, aslida
-  // qaysi yotoqxonaga tegishli ekani noaniq bo'lib qolardi.
+  // Hostel bo'sh bo'lsa 'boys' deb qabul qilinadi — ilovaning
+  // qolgan qismidagi qoida bilan bir xil.
   static String _hostelLabel(String? hostel) {
     switch (hostel ?? 'boys') {
       case 'girls':
@@ -98,35 +113,36 @@ class ExcelExportService {
     }
   }
 
-  // "Kun.Oy.Yil" formatida sana (masalan: tug'ilgan sana uchun).
   static String _formatDate(DateTime? dt) {
     if (dt == null) return "Kiritilmagan";
     String two(int n) => n.toString().padLeft(2, '0');
     return "${two(dt.day)}.${two(dt.month)}.${dt.year}";
   }
 
-  // "Kun.Oy.Yil Soat:Daqiqa" formatida sana+vaqt (ro'yxatdan o'tgan vaqt uchun).
   static String _formatDateTime(DateTime? dt) {
     if (dt == null) return "Noma'lum";
     String two(int n) => n.toString().padLeft(2, '0');
-    return "${two(dt.day)}.${two(dt.month)}.${dt.year} ${two(dt.hour)}:${two(dt.minute)}";
+    return "${two(dt.day)}.${two(dt.month)}.${dt.year} "
+        "${two(dt.hour)}:${two(dt.minute)}";
   }
 
-  // Talaba o'zi ro'yxatdan o'tganmi yoki Admin/Mudir tomonidan
-  // qo'lda qo'shilganmi — o'qish uchun qulay matnga o'giradi.
   static String _registeredByLabel(String? registeredBy) {
     switch (registeredBy) {
       case 'self':
         return "O'zi ro'yxatdan o'tgan";
       case 'admin':
+      case 'superAdmin':
         return "Admin tomonidan qo'shilgan";
+      case 'mudir':
+        return "Mudir tomonidan qo'shilgan";
+      case null:
+      case '':
+        return "Noma'lum";
       default:
-        // Bu maydon qo'shilishidan oldingi eski hisoblar uchun.
-        return "Noma'lum (eski hisob)";
+        return registeredBy!;
     }
   }
 
-  // Imtiyoz turi kodini ('1'..'6') o'qish uchun to'liq matnga o'giradi.
   static String _benefitTypeLabel(String? type) {
     switch (type) {
       case '1':
@@ -146,7 +162,6 @@ class ExcelExportService {
     }
   }
 
-  // 'ota' / 'ona' kodini o'qish uchun matnga o'giradi.
   static String _lostParentLabel(String? value) {
     switch (value) {
       case 'ota':
@@ -158,8 +173,6 @@ class ExcelExportService {
     }
   }
 
-  // Rol bo'yicha tartiblash uchun ustuvorlik (Excel'da yuqorida ko'rinishi
-  // kerak bo'lgan lavozimlar birinchi qatorlarda chiqadi).
   static int _rolePriority(UserRole role) {
     switch (role) {
       case UserRole.superAdmin:
@@ -175,158 +188,6 @@ class ExcelExportService {
     }
   }
 
-  /// Barcha foydalanuvchilarni (o'g'il bolalar VA qiz bolalar yotoqxonasi,
-  /// barcha rollar — superAdmin/admin/mudir/moliyachi/talaba) bitta Excel
-  /// faylga eksport qiladi. Har bir qatorda foydalanuvchining roli va
-  /// yotoqxonasi ham ko'rsatiladi.
-  static Future<void> exportAllUsersToExcel() async {
-    try {
-      // 1. Firebase Firestore'dan BARCHA foydalanuvchilarni olamiz —
-      // hech qanday role yoki hostel filtri qo'llanilmaydi, shuning
-      // uchun qizlar yotoqxonasidagi hisoblar ham ro'yxatga kiradi.
-      final QuerySnapshot snapshot =
-          await FirebaseFirestore.instance.collection('foydalanuvchilar').get();
-
-      if (snapshot.docs.isEmpty) {
-        print("Eksport qilish uchun foydalanuvchilar topilmadi.");
-        return;
-      }
-
-      // 2. UserModel'ga o'giramiz va o'qish qulay bo'lishi uchun
-      // avval yotoqxona, so'ng rol, so'ng F.I.O bo'yicha tartiblaymiz.
-      final users = snapshot.docs
-          .map((doc) => MapEntry(
-              doc.id, UserModel.fromJson(doc.data() as Map<String, dynamic>)))
-          .toList()
-        ..sort((a, b) {
-          final hostelCmp =
-              (a.value.hostel ?? 'boys').compareTo(b.value.hostel ?? 'boys');
-          if (hostelCmp != 0) return hostelCmp;
-          final roleCmp = _rolePriority(a.value.role)
-              .compareTo(_rolePriority(b.value.role));
-          if (roleCmp != 0) return roleCmp;
-          return a.value.fullName.compareTo(b.value.fullName);
-        });
-
-      // 3. Excel yaratish
-      var excel = Excel.createExcel();
-      String sheetName = "Foydalanuvchilar Ro'yxati";
-      Sheet sheetObject = excel[sheetName];
-      excel.setDefaultSheet(sheetName);
-
-      // 4. JADVAL BOSHI (Header) — CellValue orqali yoziladi.
-      // Rol va Yotoqxona ustunlari qo'shildi.
-      sheetObject.appendRow([
-        TextCellValue("T/r"),
-        TextCellValue("Foydalanuvchi ID"),
-        TextCellValue("To'liq ismi (F.I.O)"),
-        TextCellValue("Email"),
-        TextCellValue("Telefon raqami"),
-        TextCellValue("Rol"),
-        TextCellValue("Yotoqxona turi"),
-        TextCellValue("Xona raqami"),
-      ]);
-
-      // 5. MA'LUMOTLARNI QATORMA-QATOR QO'SHISH
-      int index = 1;
-      for (final entry in users) {
-        final docId = entry.key;
-        final user = entry.value;
-
-        sheetObject.appendRow([
-          IntCellValue(index), // int turi uchun IntCellValue
-          TextCellValue(docId), // String turlari uchun TextCellValue
-          TextCellValue(user.fullName),
-          TextCellValue(user.email),
-          TextCellValue(user.phoneNumber),
-          TextCellValue(_roleLabel(user.role)),
-          TextCellValue(_hostelLabel(user.hostel)),
-          TextCellValue(user.roomId ?? "Biriktirilmagan"),
-        ]);
-        index++;
-      }
-
-      // 6. Faylni platformaga mos usulda yuklab olish / ulashish
-      // (Web'da brauzer orqali yuklanadi, mobil/desktopda vaqtinchalik
-      // papkaga yozilib ulashish oynasi ochiladi)
-      final List<int>? fileBytes = excel.save();
-      if (fileBytes != null) {
-        await downloadExcelBytes(
-          fileBytes,
-          'Yotoqxona_Foydalanuvchilar_Ruyxati.xlsx',
-        );
-      }
-    } catch (e) {
-      print("Excel eksportda xatolik: $e");
-      rethrow;
-    }
-  }
-
-  // Eski nom bilan chaqiruvchi joylar buzilmasligi uchun qoldirilgan
-  // moslashuvchi (compatibility) qatlam — endi bu ham BARCHA
-  // foydalanuvchilarni (talaba bilan cheklanmagan holda) eksport qiladi.
-  @Deprecated('Buning o\'rniga exportAllUsersToExcel() dan foydalaning')
-  static Future<void> exportTalabalarToExcel() => exportAllUsersToExcel();
-
-  // "xonalar" kolleksiyasidan har bir xonaning narxi va o'qish uchun
-  // qulay nomini ("101-xona") oladi. Xona ID ham, xona raqami ham
-  // kalit sifatida qo'shiladi — chunki ilovada talabaning roomId
-  // maydoniga ba'zan xonaning hujjat ID'si, ba'zan esa to'g'ridan-to'g'ri
-  // xona RAQAMI yozilishi mumkin (qarang: qarzdorlar_royxati.dart).
-  static Future<Map<String, _RoomInfo>> _fetchRoomInfoMap() async {
-    final roomsSnap =
-        await FirebaseFirestore.instance.collection('xonalar').get();
-    final Map<String, _RoomInfo> map = {};
-    for (final doc in roomsSnap.docs) {
-      final d = doc.data();
-      final price =
-          (d['pricePerMonth'] as num? ?? d['monthlyRate'] as num? ?? 0)
-              .toDouble();
-      final roomNum = d['roomNumber'];
-      final label = roomNum != null ? '$roomNum-xona' : 'Xona';
-      final info = _RoomInfo(label: label, price: price);
-      map[doc.id] = info;
-      if (roomNum != null) map[roomNum.toString()] = info;
-    }
-    return map;
-  }
-
-  // Har bir talabaning BARCHA tasdiqlangan to'lovlari yig'indisi.
-  // O'g'il bolalar uchun 'tolov_cheklari' (status == 'approved'),
-  // qiz bolalar uchun 'girls_payments' (status == 'paid') manbalaridan.
-  static Future<Map<String, double>> _fetchTotalPaidMap() async {
-    final fs = FirebaseFirestore.instance;
-    final Map<String, double> totalPaid = {};
-    try {
-      final checksSnap = await fs
-          .collection('tolov_cheklari')
-          .where('status', isEqualTo: 'approved')
-          .get();
-      for (final doc in checksSnap.docs) {
-        final d = doc.data();
-        final studentId = d['studentId'] as String?;
-        if (studentId == null) continue;
-        final amount = (d['amount'] as num? ?? 0).toDouble();
-        totalPaid[studentId] = (totalPaid[studentId] ?? 0) + amount;
-      }
-    } catch (_) {}
-    try {
-      final girlsPaymentsSnap = await fs
-          .collection('girls_payments')
-          .where('status', isEqualTo: 'paid')
-          .get();
-      for (final doc in girlsPaymentsSnap.docs) {
-        final d = doc.data();
-        final studentId = d['studentId'] as String?;
-        if (studentId == null || studentId.isEmpty) continue;
-        final amount = (d['amount'] as num? ?? 0).toDouble();
-        totalPaid[studentId] = (totalPaid[studentId] ?? 0) + amount;
-      }
-    } catch (_) {}
-    return totalPaid;
-  }
-
-  // "120 000" kabi minglik bo'luvchi bo'shliqlar bilan formatlaydi.
   static String _formatSom(double v) {
     final s = v.toStringAsFixed(0);
     final buf = StringBuffer();
@@ -338,32 +199,235 @@ class ExcelExportService {
     return "${buf.toString()} so'm";
   }
 
-  // Xona raqamini o'qish uchun qulay "101-xona" ko'rinishida qaytaradi.
-  static String _roomLabel(String? roomId, Map<String, _RoomInfo> roomInfo) {
-    if (roomId == null || roomId.isEmpty) return "Biriktirilmagan";
-    return roomInfo[roomId]?.label ?? "Biriktirilmagan";
+  // ===================================================================
+  // MA'LUMOT YUKLASH — Laravel API
+  // ===================================================================
+
+  /// Barcha foydalanuvchilarni sahifama-sahifa yuklaydi.
+  ///
+  /// Backend bir so'rovda 100 tadan ko'p bermaydi, shuning uchun
+  /// oxirgi sahifagacha aylanamiz. 2500 talabada bu 25 ta so'rov —
+  /// eksport uchun maqbul.
+  ///
+  /// [detailed] true bo'lsa to'liq ma'lumot keladi (JSHSHIR, pasport,
+  /// tug'ilgan sana, imtiyozlar). Oddiy ro'yxatda ular yo'q.
+  static Future<List<Map<String, dynamic>>> _barchaFoydalanuvchilar({
+    String? role,
+    bool detailed = false,
+  }) async {
+    final natija = <Map<String, dynamic>>[];
+    int sahifa = 1;
+    int oxirgiSahifa = 1;
+
+    do {
+      final parametrlar = <String, String>{
+        'page': sahifa.toString(),
+        'per_page': _perPage.toString(),
+      };
+      if (role != null && role.isNotEmpty) parametrlar['role'] = role;
+      if (detailed) parametrlar['detailed'] = '1';
+
+      final javob = await _api.get(
+        'students?${Uri(queryParameters: parametrlar).query}',
+      );
+
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final e in royxat) {
+          if (e is Map) natija.add(Map<String, dynamic>.from(e));
+        }
+      }
+
+      final meta = javob['meta'];
+      if (meta is Map) {
+        oxirgiSahifa = (meta['last_page'] as num?)?.toInt() ?? sahifa;
+      } else {
+        oxirgiSahifa = sahifa; // meta yo'q bo'lsa to'xtaymiz
+      }
+
+      sahifa++;
+    } while (sahifa <= oxirgiSahifa && sahifa <= 100); // xavfsizlik chegarasi
+
+    return natija;
   }
 
-  // Xona to'lovi holati: xona narxidan talabaning tasdiqlangan
-  // to'lovlari ayiriladi. Agar to'liq (yoki ortiqcha) to'langan bo'lsa
-  // "0 so'm" chiqadi, aks holda qolgan qarz summasi (masalan
-  // "120 000 so'm") ko'rsatiladi.
+  /// Xonalar: ID va raqam bo'yicha narx/nom xaritasi.
+  ///
+  /// Ikkala kalit ham qo'shiladi, chunki talabaning xonasi ba'zan
+  /// UUID, ba'zan raqam ko'rinishida keladi.
+  static Future<Map<String, _RoomInfo>> _xonalarXaritasi() async {
+    final map = <String, _RoomInfo>{};
+    try {
+      final xonalar = await _api.getRooms();
+      for (final x in xonalar) {
+        if (x is! Map) continue;
+        final d = Map<String, dynamic>.from(x);
+
+        final price = _son(d['price_per_month'] ?? d['pricePerMonth']);
+        final roomNum = d['room_number'] ?? d['roomNumber'];
+        final label = roomNum != null ? '$roomNum-xona' : 'Xona';
+        final info = _RoomInfo(label: label, price: price);
+
+        final id = _str(d['id']);
+        if (id.isNotEmpty) map[id] = info;
+        if (roomNum != null) map[roomNum.toString()] = info;
+      }
+    } catch (e) {
+      // Xonalar yuklanmasa eksport baribir davom etadi —
+      // faqat xona ustunlari "Biriktirilmagan" bo'ladi.
+    }
+    return map;
+  }
+
+  /// Har bir talabaning tasdiqlangan to'lovlari yig'indisi.
+  static Future<Map<String, double>> _tolanganXaritasi() async {
+    final natija = <String, double>{};
+    try {
+      final tolovlar = await _api.getPayments();
+      for (final t in tolovlar) {
+        if (t is! Map) continue;
+        final d = Map<String, dynamic>.from(t);
+
+        final holat = _str(d['status']).toLowerCase();
+        final tasdiqlangan = holat == 'approved' ||
+            holat == 'paid' ||
+            d['paid_at'] != null;
+        if (!tasdiqlangan) continue;
+
+        final studentId = _str(d['student_id'] ?? d['studentId']);
+        if (studentId.isEmpty) continue;
+
+        natija[studentId] = (natija[studentId] ?? 0) + _son(d['amount']);
+      }
+    } catch (e) {
+      // To'lovlar yuklanmasa qarz ustuni "Xona narxi belgilanmagan"
+      // yoki to'liq narx bo'lib chiqadi.
+    }
+    return natija;
+  }
+
+  static String _roomLabel(String? roomKey, Map<String, _RoomInfo> roomInfo) {
+    if (roomKey == null || roomKey.isEmpty) return "Biriktirilmagan";
+    return roomInfo[roomKey]?.label ?? "Biriktirilmagan";
+  }
+
   static String _paymentStatusLabel(
     String studentId,
-    String? roomId,
+    String? roomKey,
     Map<String, _RoomInfo> roomInfo,
     Map<String, double> totalPaid,
   ) {
-    if (roomId == null || roomId.isEmpty) return "Xona biriktirilmagan";
-    final info = roomInfo[roomId];
+    if (roomKey == null || roomKey.isEmpty) return "Xona biriktirilmagan";
+    final info = roomInfo[roomKey];
     if (info == null || info.price <= 0) return "Xona narxi belgilanmagan";
     final paid = totalPaid[studentId] ?? 0;
     final debt = info.price - paid;
     return _formatSom(debt < 0 ? 0 : debt);
   }
 
-  /// Sarlavha qatorini (header) ikkala hostel eksporti uchun bir xil
-  /// tartibda yozadi.
+  /// API javobidan xona kalitini ajratadi.
+  static String? _xonaKaliti(Map<String, dynamic> u) {
+    final biriktirish =
+        u['active_room_assignment'] ?? u['activeRoomAssignment'];
+    if (biriktirish is Map) {
+      final xona = biriktirish['room'];
+      if (xona is Map) {
+        final raqam = xona['room_number'] ?? xona['roomNumber'];
+        if (raqam != null) return raqam.toString();
+      }
+      final roomId = biriktirish['room_id'] ?? biriktirish['roomId'];
+      if (roomId != null) return roomId.toString();
+    }
+    final togridan = u['room_id'] ?? u['roomId'];
+    return togridan?.toString();
+  }
+
+  // ===================================================================
+  // 1-EKSPORT: BARCHA FOYDALANUVCHILAR (qisqa)
+  // ===================================================================
+
+  /// Barcha rollardagi foydalanuvchilarni qisqa ko'rinishda eksport
+  /// qiladi: F.I.O, email, telefon, rol, yotoqxona, xona.
+  static Future<void> exportAllUsersToExcel() async {
+    try {
+      final xom = await _barchaFoydalanuvchilar();
+
+      if (xom.isEmpty) {
+        throw Exception("Eksport qilish uchun foydalanuvchilar topilmadi.");
+      }
+
+      final users = xom
+          .map((d) => MapEntry(_str(d['id']), UserModel.fromJson(d)))
+          .toList()
+        ..sort((a, b) {
+          final hostelCmp =
+              (a.value.hostel ?? 'boys').compareTo(b.value.hostel ?? 'boys');
+          if (hostelCmp != 0) return hostelCmp;
+          final roleCmp = _rolePriority(a.value.role)
+              .compareTo(_rolePriority(b.value.role));
+          if (roleCmp != 0) return roleCmp;
+          return a.value.fullName.compareTo(b.value.fullName);
+        });
+
+      final xonalar = await _xonalarXaritasi();
+
+      final excel = Excel.createExcel();
+      const sheetName = "Foydalanuvchilar Ro'yxati";
+      final sheetObject = excel[sheetName];
+      excel.setDefaultSheet(sheetName);
+
+      sheetObject.appendRow([
+        TextCellValue("T/r"),
+        TextCellValue("Foydalanuvchi ID"),
+        TextCellValue("To'liq ismi (F.I.O)"),
+        TextCellValue("Email"),
+        TextCellValue("Telefon raqami"),
+        TextCellValue("Rol"),
+        TextCellValue("Yotoqxona turi"),
+        TextCellValue("Xona raqami"),
+      ]);
+
+      int index = 1;
+      for (int i = 0; i < users.length; i++) {
+        final docId = users[i].key;
+        final user = users[i].value;
+        final roomKey = _xonaKaliti(xom.firstWhere(
+          (e) => _str(e['id']) == docId,
+          orElse: () => <String, dynamic>{},
+        ));
+
+        sheetObject.appendRow([
+          IntCellValue(index),
+          TextCellValue(docId),
+          TextCellValue(user.fullName),
+          TextCellValue(user.email),
+          TextCellValue(user.phoneNumber),
+          TextCellValue(_roleLabel(user.role)),
+          TextCellValue(_hostelLabel(user.hostel)),
+          TextCellValue(_roomLabel(roomKey, xonalar)),
+        ]);
+        index++;
+      }
+
+      final fileBytes = excel.save();
+      if (fileBytes != null) {
+        await downloadExcelBytes(
+          fileBytes,
+          'Yotoqxona_Foydalanuvchilar_Ruyxati.xlsx',
+        );
+      }
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  @Deprecated('Buning o\'rniga exportAllUsersToExcel() dan foydalaning')
+  static Future<void> exportTalabalarToExcel() => exportAllUsersToExcel();
+
+  // ===================================================================
+  // 2-EKSPORT: TALABALAR (to'liq)
+  // ===================================================================
+
   static void _writeHeader(Sheet sheetObject) {
     sheetObject.appendRow([
       TextCellValue("T/r"),
@@ -391,7 +455,6 @@ class ExcelExportService {
     ]);
   }
 
-  /// Bitta `_ExportRow`ni Excel qatoriga yozadi.
   static void _writeRow(
     Sheet sheetObject,
     int index,
@@ -415,9 +478,9 @@ class ExcelExportService {
       TextCellValue(_hostelLabel(row.hostel)),
       TextCellValue(row.passportId ?? "Kiritilmagan"),
       TextCellValue(row.jshshir ?? "Kiritilmagan"),
-      TextCellValue(_roomLabel(row.roomId, roomInfo)),
+      TextCellValue(_roomLabel(row.roomKey, roomInfo)),
       TextCellValue(
-          _paymentStatusLabel(row.id, row.roomId, roomInfo, totalPaid)),
+          _paymentStatusLabel(row.id, row.roomKey, roomInfo, totalPaid)),
       TextCellValue(_formatDateTime(row.createdAt)),
       TextCellValue(_registeredByLabel(row.registeredBy)),
       TextCellValue(row.hasSocialBenefit ? "Ha" : "Yo'q"),
@@ -432,134 +495,91 @@ class ExcelExportService {
     ]);
   }
 
-  // "girls_students" kolleksiyasidagi (Admin/Mudira tomonidan qo'lda
-  // qo'shilgan, Firebase Auth hisobisiz) talabalarni umumiy `_ExportRow`
-  // ko'rinishiga o'giradi. Bu model 'foydalanuvchilar'dan farqli bo'lgani
-  // uchun (email, pasport, JSHSHIR, tug'ilgan sana kabi maydonlar yo'q),
-  // ular "Kiritilmagan" sifatida chiqadi.
-  static List<_ExportRow> _girlsStudentsToRows(QuerySnapshot snap) {
-    return snap.docs.map((doc) {
-      final d = doc.data() as Map<String, dynamic>;
-      DateTime? createdAt;
-      final rawCreatedAt = d['createdAt'];
-      if (rawCreatedAt is String) {
-        createdAt = DateTime.tryParse(rawCreatedAt);
-      } else if (rawCreatedAt != null) {
-        try {
-          createdAt = (rawCreatedAt as dynamic).toDate();
-        } catch (_) {}
-      }
-      return _ExportRow(
-        id: doc.id,
-        fullName: (d['fullName'] as String?) ?? '',
-        email: '',
-        phoneNumber: (d['phone'] as String?) ?? '',
-        faculty: d['faculty'] as String?,
-        course: d['course'] as String?,
-        hostel: 'girls',
-        roomId: d['roomId'] as String?,
-        createdAt: createdAt,
-        registeredBy: 'admin',
-      );
-    }).toList();
-  }
-
-  /// BARCHA TALABALARNI (O'g'il bolalar VA Qiz bolalar yotoqxonasi,
-  /// ikkala manbadan — o'zi ro'yxatdan o'tganlar VA Admin/Mudira tomonidan
-  /// qo'lda qo'shilganlar) to'liq shaxsiy ma'lumotlari bilan Excel'ga
-  /// eksport qiladi. Admin bo'limidagi "Sozlamalar" sahifasidagi eksport
-  /// tugmasi shu funksiyani chaqiradi — shu bois natija endi qizlar
-  /// yotoqxonasidagi foydalanuvchilarga ham ta'sir qiladi.
+  /// Barcha talabalarni (o'g'il va qiz bolalar) to'liq shaxsiy
+  /// ma'lumotlari bilan Excel'ga eksport qiladi.
   ///
-  /// Ustunlar: F.I.O, tug'ilgan sana, viloyat/tuman, email, telefon,
-  /// fakultet, yotoqxona turi, Pasport seriya-raqami, JSHSHIR,
-  /// biriktirilgan xona raqami ("101-xona"), xona to'lovi holati
-  /// (qolgan qarz summasi, masalan "0 so'm" yoki "120 000 so'm"),
-  /// ro'yxatdan o'tgan vaqti va turi.
+  /// Ilgari ikki manbadan yig'ilardi ("foydalanuvchilar" va
+  /// "girls_students"). Laravel'da hammasi bitta jadvalda, qizlar
+  /// hostel = 'girls' bilan farqlanadi.
   static Future<void> exportBoysStudentsToExcel() async {
     try {
-      // 1. "foydalanuvchilar" kolleksiyasidan faqat "talaba" rolidagilarni
-      // so'raymiz — BU YERDA endi hostel bo'yicha filtr YO'Q, shu sabab
-      // o'g'il bolalar VA qiz bolalar (o'zi ro'yxatdan o'tgan) talabalari
-      // birga keladi.
-      final QuerySnapshot snapshot = await FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .where('role', isEqualTo: UserRole.talaba.name)
-          .get();
+      // detailed=1 — JSHSHIR, pasport, tug'ilgan sana, imtiyozlar
+      // uchun to'liq ma'lumot kerak.
+      final xom = await _barchaFoydalanuvchilar(
+        role: 'talaba',
+        detailed: true,
+      );
 
-      final selfRegisteredRows = snapshot.docs.map((doc) {
-        final user = UserModel.fromJson(doc.data() as Map<String, dynamic>);
-        final benefitData = user.additionalData ?? const {};
+      if (xom.isEmpty) {
+        throw Exception("Eksport qilish uchun talabalar topilmadi.");
+      }
+
+      final qatorlar = xom.map((d) {
+        // Ijtimoiy imtiyoz ma'lumoti additional_data ichida saqlanadi.
+        final qoshimcha = d['additional_data'] ?? d['additionalData'];
+        final imtiyoz = qoshimcha is Map
+            ? Map<String, dynamic>.from(qoshimcha)
+            : <String, dynamic>{};
+
+        final kurs = d['course'];
+
         return _ExportRow(
-          id: user.id,
-          fullName: user.fullName,
-          birthDate: user.birthDate,
-          region: user.region,
-          district: user.district,
-          email: user.email,
-          phoneNumber: user.phoneNumber,
-          faculty: user.faculty,
-          course: user.course,
-          hostel: user.hostel,
-          roomId: user.roomId,
-          createdAt: user.createdAt,
-          registeredBy: user.registeredBy,
-          passportId: user.passportId,
-          jshshir: user.jshshir,
-          hasSocialBenefit: benefitData['hasSocialBenefit'] == true,
-          benefitType: benefitData['benefitType'] as String?,
-          lostParentType: benefitData['lostParentType'] as String?,
-          deathCertificateUrl: benefitData['deathCertificateUrl'] as String?,
-          benefitDocumentUrl: benefitData['benefitDocumentUrl'] as String?,
+          id: _str(d['id']),
+          fullName: _str(d['full_name'] ?? d['fullName']),
+          birthDate: _sana(d['birth_date'] ?? d['birthDate']),
+          region: _str(d['region']).isEmpty ? null : _str(d['region']),
+          district: _str(d['district']).isEmpty ? null : _str(d['district']),
+          email: _str(d['email']),
+          phoneNumber: _str(d['phone'] ?? d['phoneNumber']),
+          faculty: _str(d['faculty']).isEmpty ? null : _str(d['faculty']),
+          course: kurs == null ? null : kurs.toString(),
+          hostel: _str(d['hostel']).isEmpty ? null : _str(d['hostel']),
+          roomKey: _xonaKaliti(d),
+          createdAt: _sana(d['created_at'] ?? d['createdAt']),
+          registeredBy: _str(d['registered_by'] ?? d['registeredBy']),
+          passportId:
+              _str(d['passport_id'] ?? d['passportId']).isEmpty
+                  ? null
+                  : _str(d['passport_id'] ?? d['passportId']),
+          jshshir: _str(d['jshshir']).isEmpty ? null : _str(d['jshshir']),
+          hasSocialBenefit: imtiyoz['hasSocialBenefit'] == true ||
+              imtiyoz['has_social_benefit'] == true,
+          benefitType:
+              (imtiyoz['benefitType'] ?? imtiyoz['benefit_type'])?.toString(),
+          lostParentType: (imtiyoz['lostParentType'] ??
+                  imtiyoz['lost_parent_type'])
+              ?.toString(),
+          deathCertificateUrl: (imtiyoz['deathCertificateUrl'] ??
+                  imtiyoz['death_certificate_url'])
+              ?.toString(),
+          benefitDocumentUrl: (imtiyoz['benefitDocumentUrl'] ??
+                  imtiyoz['benefit_document_url'])
+              ?.toString(),
         );
-      }).toList();
-
-      // 2. "girls_students" kolleksiyasidan Admin/Mudira tomonidan qo'lda
-      // qo'shilgan (Firebase Auth hisobisiz) qiz bolalar talabalarini ham
-      // qo'shamiz — aks holda ular eksportda umuman ko'rinmasdi.
-      List<_ExportRow> adminAddedGirlsRows = [];
-      try {
-        final girlsStudentsSnap =
-            await FirebaseFirestore.instance.collection('girls_students').get();
-        adminAddedGirlsRows = _girlsStudentsToRows(girlsStudentsSnap);
-      } catch (_) {}
-
-      final allRows = [...selfRegisteredRows, ...adminAddedGirlsRows]
+      }).toList()
         ..sort((a, b) {
           final hostelCmp = (a.hostel ?? 'boys').compareTo(b.hostel ?? 'boys');
           if (hostelCmp != 0) return hostelCmp;
           return a.fullName.compareTo(b.fullName);
         });
 
-      if (allRows.isEmpty) {
-        print("Eksport qilish uchun talabalar topilmadi.");
-        return;
-      }
+      final roomInfo = await _xonalarXaritasi();
+      final totalPaid = await _tolanganXaritasi();
 
-      // 3. Xona narxlari/nomlari va to'langan summalar xaritalarini
-      // OLDINDAN bir marta yuklaymiz — har bir talaba uchun alohida
-      // so'rov yubormaslik uchun.
-      final roomInfo = await _fetchRoomInfoMap();
-      final totalPaid = await _fetchTotalPaidMap();
-
-      // 4. Excel yaratish
-      var excel = Excel.createExcel();
-      String sheetName = "Talabalar (O'g'il va Qiz bolalar)";
-      Sheet sheetObject = excel[sheetName];
+      final excel = Excel.createExcel();
+      const sheetName = "Talabalar (O'g'il va Qiz bolalar)";
+      final sheetObject = excel[sheetName];
       excel.setDefaultSheet(sheetName);
 
-      // 5. JADVAL BOSHI (Header)
       _writeHeader(sheetObject);
 
-      // 6. MA'LUMOTLARNI QATORMA-QATOR QO'SHISH
       int index = 1;
-      for (final row in allRows) {
+      for (final row in qatorlar) {
         _writeRow(sheetObject, index, row, roomInfo, totalPaid);
         index++;
       }
 
-      // 7. Faylni platformaga mos usulda yuklab olish / ulashish
-      final List<int>? fileBytes = excel.save();
+      final fileBytes = excel.save();
       if (fileBytes != null) {
         await downloadExcelBytes(
           fileBytes,
@@ -567,7 +587,6 @@ class ExcelExportService {
         );
       }
     } catch (e) {
-      print("Talabalarni eksport qilishda xatolik: $e");
       rethrow;
     }
   }
