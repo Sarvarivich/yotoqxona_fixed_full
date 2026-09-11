@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Payment;
+use App\Models\RoomStudent;
 use Illuminate\Http\Request;
 
 class ContractController extends Controller
@@ -16,39 +16,48 @@ class ContractController extends Controller
 
     /**
      * Talaba uchun shartnoma yuklab olish tugmasi ko'rinishi/ko'rinmasligini
-     * aniqlash uchun holat: tasdiqlangan (approved) to'lovi bormi?
+     * aniqlash uchun holat: xonasi biriktirilganmi?
      */
     public function status(Request $request)
     {
         $user = $request->user();
 
-        $hasApproved = Payment::where('student_id', $user->id)
-            ->where('status', 'approved')
+        // Shartnoma xonaga biriktirilgan talabaga beriladi.
+        //
+        // Ilgari tasdiqlangan to'lov talab qilinardi, lekin
+        // tartib teskari: avval shartnoma imzolanadi, keyin
+        // talaba unga asoslanib to'laydi.
+        $hasRoom = RoomStudent::where('student_id', $user->id)
+            ->where('status', 'active')
             ->exists();
 
         return response()->json([
             'success' => true,
-            'available' => $hasApproved,
+            'available' => $hasRoom,
         ]);
     }
 
     /**
      * Shartnoma faylini yuklab olish.
-     * Faqat moliya tomonidan tasdiqlangan (status = approved) to'lovi bor
-     * talabaga ruxsat beriladi.
+     * Faqat xonaga biriktirilgan talabaga ruxsat beriladi.
      */
     public function download(Request $request)
     {
         $user = $request->user();
 
-        $hasApproved = Payment::where('student_id', $user->id)
-            ->where('status', 'approved')
+        // Shartnoma xonaga biriktirilgan talabaga beriladi.
+        //
+        // Ilgari tasdiqlangan to'lov talab qilinardi, lekin
+        // tartib teskari: avval shartnoma imzolanadi, keyin
+        // talaba unga asoslanib to'laydi.
+        $hasRoom = RoomStudent::where('student_id', $user->id)
+            ->where('status', 'active')
             ->exists();
 
-        if (!$hasApproved) {
+        if (!$hasRoom) {
             return response()->json([
                 'success' => false,
-                'message' => 'Shartnoma faqat to\'lovingiz moliya tomonidan tasdiqlangandan so\'ng yuklab olinadi.',
+                'message' => 'Shartnoma xonangiz biriktirilgandan so\'ng yuklab olinadi.',
             ], 403);
         }
 
