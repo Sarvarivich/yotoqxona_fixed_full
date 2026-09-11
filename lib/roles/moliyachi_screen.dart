@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../modules/models/user_model.dart';
 import '../modules/models/tolov_cheklari_screen.dart';
@@ -9,8 +8,9 @@ import '../modules/hisobot/moliya_tolov_tarixi.dart';
 import '../modules/hisobot/budjet_xarajatlari.dart';
 import '../modules/hisobot/qarzdorlar_royxati.dart';
 import '../modules/services/auth_service.dart';
+import '../modules/services/api_service.dart';
 
-// в”Ђв”Ђв”Ђ Moliyachi (Moliya bo'limi) profili в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Moliyachi (Moliya bo'limi) profili РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 // Bu profil talabalarning to'lov cheklari bo'yicha murojaatlarini
 // tasdiqlaydi/rad etadi, to'lov tarixini, byudjet va xarajatlar
 // hisobotini hamda qarzdorlar ro'yxatini boshqaradi.
@@ -227,7 +227,7 @@ class _MoliyachiScreenState extends State<MoliyachiScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             child: Text(
-              "Yotoqxona В· Versiya 1.0.0",
+              "Yotoqxona Р’В· Versiya 1.0.0",
               style: TextStyle(color: _C.muted, fontSize: 11),
             ),
           ),
@@ -347,7 +347,7 @@ class _NavItem {
   const _NavItem(this.label, this.activeIcon, this.icon, this.color);
 }
 
-// в”Ђв”Ђв”Ђ Creative AppBar в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Creative AppBar РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 class _CreativeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final VoidCallback onMenuTap;
@@ -466,18 +466,39 @@ class _AppBarIconBtn extends StatelessWidget {
   }
 }
 
+// Kutilayotgan to'lov cheklari soni.
+//
+// Ilgari Firestore snapshots() bilan real vaqtda sanardi.
+// Firebase sozlanmagan platformada (Windows) bu butun
+// menyuni qizil ekranga aylantirardi.
+//
+// Endi Laravel API'dan bir marta yuklanadi. Xato bo'lsa
+// belgi shunchaki ko'rinmaydi - menyu buzilmaydi.
 class _MurojaatBadgeDot extends StatelessWidget {
   const _MurojaatBadgeDot();
 
+  Future<int> _kutilayotganlar() async {
+    try {
+      final javob = await ApiService().get('payments');
+      final royxat = javob['data'];
+      if (royxat is! List) return 0;
+
+      return royxat.where((t) {
+        if (t is! Map) return false;
+        return (t['status'] ?? '').toString().toLowerCase() ==
+            'pending';
+      }).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('tolov_cheklari')
-          .where('status', isEqualTo: 'pending')
-          .snapshots(),
+    return FutureBuilder<int>(
+      future: _kutilayotganlar(),
       builder: (context, snap) {
-        final count = snap.data?.docs.length ?? 0;
+        final count = snap.data ?? 0;
         if (count == 0) return const SizedBox(width: 8);
         return Container(
           margin: const EdgeInsets.only(right: 8),

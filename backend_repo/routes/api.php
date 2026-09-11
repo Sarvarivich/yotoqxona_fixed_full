@@ -32,12 +32,12 @@ use App\Http\Controllers\Api\ReportController;
 |   FINANCE  = moliyachi, admin, superAdmin      (pul bilan bog'liq amallar)
 |   STAFF    = mudir, moliyachi, admin, superAdmin  (barcha xodimlar)
 |
-| Talabalar (role = talaba) faqat o'z ma'lumotlari bilan ishlaydi —
+| Talabalar (role = talaba) faqat o'z ma'lumotlari bilan ishlaydi вЂ”
 | bu cheklov controller yoki Policy ichida amalga oshiriladi.
 |
 */
 
-// Rol ro'yxatlarini bir joyda saqlaymiz — keyinchalik o'zgartirish oson.
+// Rol ro'yxatlarini bir joyda saqlaymiz вЂ” keyinchalik o'zgartirish oson.
 $ADMINS   = 'role:admin,superAdmin';
 $MANAGERS = 'role:mudir,admin,superAdmin';
 $FINANCE  = 'role:moliyachi,admin,superAdmin';
@@ -66,7 +66,7 @@ Route::middleware('throttle:10,1')->group(function () {
 
 });
 
-// Ro'yxatdan o'tishdan oldin bino tanlash uchun kerak — ochiq qoladi.
+// Ro'yxatdan o'tishdan oldin bino tanlash uchun kerak вЂ” ochiq qoladi.
 Route::get('/hostels', [HostelController::class, 'index']);
 Route::get('/hostels/{id}', [HostelController::class, 'show']);
 
@@ -85,11 +85,15 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
 
     /*
     |----------------------------------------------------------------------
-    | PROFIL — har qanday tizimga kirgan foydalanuvchi
+    | PROFIL вЂ” har qanday tizimga kirgan foydalanuvchi
     |----------------------------------------------------------------------
     */
 
     Route::get('/me', [AuthController::class, 'me']);
+    // Talaba o'z profilini tahrirlaydi. PUT /api/students/{id}
+    // dan farqi: faqat o'z yozuvi va faqat xavfsiz maydonlar.
+    Route::put('/me', [AuthController::class, 'updateProfile']);
+    Route::patch('/me', [AuthController::class, 'updateProfile']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/change-password', [AuthController::class, 'changePassword']);
 
@@ -102,7 +106,7 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
 
     /*
     |----------------------------------------------------------------------
-    | FOYDALANUVCHILARNI BOSHQARISH — faqat ADMINS
+    | FOYDALANUVCHILARNI BOSHQARISH вЂ” faqat ADMINS
     |----------------------------------------------------------------------
     |
     | Ilgari bu ikki endpoint har qanday talabaga ochiq edi.
@@ -118,7 +122,7 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
 
     /*
     |----------------------------------------------------------------------
-    | DASHBOARD — faqat xodimlar
+    | DASHBOARD вЂ” faqat xodimlar
     |----------------------------------------------------------------------
     |
     | Umumiy statistika (jami talabalar, bandlik, moliya) talabaga
@@ -135,9 +139,9 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
     | TALABALAR
     |----------------------------------------------------------------------
     |
-    | O'qish — barcha xodimlar (moliyachiga to'lovlar uchun kerak).
-    | Yozish/o'chirish — faqat MANAGERS.
-    | Parolni majburan almashtirish — faqat ADMINS.
+    | O'qish вЂ” barcha xodimlar (moliyachiga to'lovlar uchun kerak).
+    | Yozish/o'chirish вЂ” faqat MANAGERS.
+    | Parolni majburan almashtirish вЂ” faqat ADMINS.
     |
     | Har bir metod ichida qo'shimcha ravishda UserPolicy tekshiriladi:
     | mudir faqat o'z binosidagi talabaga tegishi mumkin.
@@ -171,7 +175,7 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
     | HUJJATLAR
     |----------------------------------------------------------------------
     |
-    | Talaba o'z hujjatini yuklaydi va ko'radi — cheklov
+    | Talaba o'z hujjatini yuklaydi va ko'radi вЂ” cheklov
     | DocumentController ichida ($user->id !== $studentId).
     |
     */
@@ -185,8 +189,8 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
     | XONALAR
     |----------------------------------------------------------------------
     |
-    | Ro'yxatni ko'rish — hamma (talaba bo'sh joylarni ko'rishi mumkin).
-    | Yaratish/tahrirlash/o'chirish — MANAGERS.
+    | Ro'yxatni ko'rish вЂ” hamma (talaba bo'sh joylarni ko'rishi mumkin).
+    | Yaratish/tahrirlash/o'chirish вЂ” MANAGERS.
     |
     */
 
@@ -231,7 +235,7 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
     |----------------------------------------------------------------------
     |
     | Talaba ariza yaratadi va o'zinikini ko'radi (filtr controller ichida).
-    | Ko'rib chiqish (update) va o'chirish — MANAGERS.
+    | Ko'rib chiqish (update) va o'chirish вЂ” MANAGERS.
     |
     */
 
@@ -294,7 +298,7 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
     |----------------------------------------------------------------------
     |
     | Talaba murojaat yozadi va o'zinikini ko'radi.
-    | Javob berish (update) — xodimlar.
+    | Javob berish (update) вЂ” xodimlar.
     |
     */
 
@@ -321,7 +325,7 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::patch('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
 
-    // Boshqa foydalanuvchiga bildirishnoma yuborish — faqat xodimlar.
+    // Boshqa foydalanuvchiga bildirishnoma yuborish вЂ” faqat xodimlar.
     Route::post('/notifications', [NotificationController::class, 'store'])
         ->middleware($STAFF);
 
@@ -342,7 +346,7 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
 
     /*
     |----------------------------------------------------------------------
-    | MOLIYA — XARAJATLAR VA BYUDJET
+    | MOLIYA вЂ” XARAJATLAR VA BYUDJET
     |----------------------------------------------------------------------
     |
     | To'liq yopiq: talaba universitetning xarajatlarini ko'rmasligi kerak.

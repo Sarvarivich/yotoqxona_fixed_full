@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../models/user_model.dart';
+import '../services/api_service.dart';
 
 // ─── Moliya bo'limi — Byudjet va xarajatlar hisoboti ───────────────
 // Moliyachi shu yerda oylik byudjetni belgilaydi, xarajatlarni kiritadi
 // va tasdiqlangan to'lovlardan kelib chiqib daromad/xarajat/qoldiq
 // balansini kuzatadi.
+//
+// Ma'lumot Laravel API'dan olinadi:
+//   byudjet    -> GET/POST /api/budgets
+//   xarajatlar -> GET/POST/DELETE /api/expenses
+//   tushum     -> GET /api/payments (tasdiqlanganlar yig'indisi)
 
 class _C {
   static const bgBase = Color(0xFF0F0D1A);
@@ -36,6 +42,29 @@ const List<String> kExpenseCategories = [
 String _monthKey(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}';
 
+/// Moliya ekrani uchun bir marta yuklanadigan ma'lumot to'plami.
+///
+/// Ilgari uchta alohida Firestore manbasi bor edi: byudjet hujjati,
+/// xarajatlar kolleksiyasi va to'lov cheklari. Laravel'da ular uchta
+/// so'rov — natijani bitta obyektga yig'ib, bitta FutureBuilder bilan
+/// ko'rsatamiz.
+class _MoliyaMalumot {
+  /// Tanlangan oy uchun belgilangan byudjet.
+  final double byudjet;
+
+  /// Tanlangan oyning xarajatlari (yangisidan eskisiga tartiblangan).
+  final List<Map<String, dynamic>> xarajatlar;
+
+  /// Tanlangan oydagi tasdiqlangan to'lovlar yig'indisi.
+  final double tushum;
+
+  const _MoliyaMalumot({
+    required this.byudjet,
+    required this.xarajatlar,
+    required this.tushum,
+  });
+}
+
 class ByudjetXarajatlar extends StatefulWidget {
   final UserModel? user;
   const ByudjetXarajatlar({super.key, this.user});
@@ -45,7 +74,134 @@ class ByudjetXarajatlar extends StatefulWidget {
 }
 
 class _ByudjetXarajatlarState extends State<ByudjetXarajatlar> {
+  final _api = ApiService();
+
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+
+  // Ma'lumot bir marta yuklanadi va saqlanadi.
+  //
+  // MUHIM: Future initState'da yaratiladi. Agar u build() ichida
+  // yaratilsa, har bir setState (oy tanlash, xarajat qo'shish)
+  // cheksiz so'rovlar zanjiriga olib kelardi.
+  late Future<_MoliyaMalumot> _malumot;
+
+  @override
+  void initState() {
+    super.initState();
+    _malumot = _yukla();
+  }
+
+  // ===================================================================
+  // MA'LUMOT YUKLASH
+  // ===================================================================
+
+  /// Tanlangan oy uchun byudjet, xarajatlar va tushumni yuklaydi.
+  Future<_MoliyaMalumot> _yukla() async {
+    final oyKaliti = _monthKey(_selectedMonth);
+
+    // --- 1. Byudjet ---
+    double byudjet = 0;
+    try {
+      final javob = await _api.get('budgets');
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final e in royxat) {
+          if (e is! Map) continue;
+          if ((e['month_key'] ?? '').toString() == oyKaliti) {
+            byudjet = double.tryParse((e['amount'] ?? 0).toString()) ?? 0;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Byudjetni yuklashda xatolik: $e');
+    }
+
+    // --- 2. Xarajatlar ---
+    final xarajatlar = <Map<String, dynamic>>[];
+    try {
+      final javob = await _api.get('expenses');
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final e in royxat) {
+          if (e is! Map) continue;
+          final d = Map<String, dynamic>.from(e);
+
+          // Faqat tanlangan oyning xarajatlari.
+          final sana = DateTime.tryParse((d['date'] ?? '').toString());
+          if (sana == null) continue;
+          if (_monthKey(sana) != oyKaliti) continue;
+
+          xarajatlar.add(d);
+        }
+      }
+    } catch (e) {
+      debugPrint('Xarajatlarni yuklashda xatolik: $e');
+    }
+
+    // Eng yangisidan eng eskisiga
+    xarajatlar.sort((a, b) {
+      final sa =
+          DateTime.tryParse((a['date'] ?? '').toString()) ?? DateTime(1970);
+      final sb =
+          DateTime.tryParse((b['date'] ?? '').toString()) ?? DateTime(1970);
+      return sb.compareTo(sa);
+    });
+
+    // --- 3. Tushum ---
+    final tushum = await _incomeForMonth(_selectedMonth);
+
+    return _MoliyaMalumot(
+      byudjet: byudjet,
+      xarajatlar: xarajatlar,
+      tushum: tushum,
+    );
+  }
+
+  Future<void> _qaytaYukla() async {
+    if (!mounted) return;
+    setState(() {
+      _malumot = _yukla();
+    });
+    await _malumot;
+  }
+
+  /// Tanlangan oydagi tasdiqlangan to'lovlar yig'indisi.
+  Future<double> _incomeForMonth(DateTime month) async {
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
+    double total = 0;
+
+    try {
+      final javob = await _api.get('payments');
+      final royxat = javob['data'];
+      if (royxat is! List) return 0;
+
+      for (final e in royxat) {
+        if (e is! Map) continue;
+        final d = Map<String, dynamic>.from(e);
+
+        final holat = (d['status'] ?? '').toString().toLowerCase();
+        if (holat != 'approved' && holat != 'paid') continue;
+
+        final sana = DateTime.tryParse(
+          (d['paid_at'] ?? d['created_at'] ?? '').toString(),
+        );
+        if (sana == null) continue;
+        if (sana.isBefore(start) || !sana.isBefore(end)) continue;
+
+        total += double.tryParse((d['amount'] ?? 0).toString()) ?? 0;
+      }
+    } catch (e) {
+      debugPrint('Tushumni hisoblashda xatolik: $e');
+    }
+
+    return total;
+  }
+
+  // ===================================================================
+  // OY TANLASH
+  // ===================================================================
 
   void _pickMonth() async {
     final picked = await showDatePicker(
@@ -67,9 +223,15 @@ class _ByudjetXarajatlarState extends State<ByudjetXarajatlar> {
       ),
     );
     if (picked != null) {
-      setState(() => _selectedMonth = DateTime(picked.year, picked.month));
+      _selectedMonth = DateTime(picked.year, picked.month);
+      // Oy o'zgarganda ma'lumotni qayta yuklaymiz.
+      await _qaytaYukla();
     }
   }
+
+  // ===================================================================
+  // BYUDJET
+  // ===================================================================
 
   Future<void> _editBudgetDialog(double currentBudget) async {
     final ctrl = TextEditingController(
@@ -107,15 +269,27 @@ class _ByudjetXarajatlarState extends State<ByudjetXarajatlar> {
             onPressed: () async {
               final val = double.tryParse(ctrl.text.trim());
               if (val == null) return;
-              await FirebaseFirestore.instance
-                  .collection('moliya_byudjetlari')
-                  .doc(_monthKey(_selectedMonth))
-                  .set({
-                'monthKey': _monthKey(_selectedMonth),
-                'monthlyBudget': val,
-                'updatedAt': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-              if (ctx.mounted) Navigator.pop(ctx);
+
+              try {
+                // Backend updateOrCreate ishlatadi: shu oy uchun
+                // byudjet bo'lsa yangilanadi, bo'lmasa yaratiladi.
+                await _api.post('budgets', body: {
+                  'month_key': _monthKey(_selectedMonth),
+                  'year': _selectedMonth.year,
+                  'amount': val,
+                });
+                if (ctx.mounted) Navigator.pop(ctx);
+                await _qaytaYukla();
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    SnackBar(
+                      content: Text("Byudjetni saqlab bo'lmadi: $e"),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
             },
             child: const Text("Saqlash", style: TextStyle(color: Colors.white)),
           ),
@@ -123,6 +297,10 @@ class _ByudjetXarajatlarState extends State<ByudjetXarajatlar> {
       ),
     );
   }
+
+  // ===================================================================
+  // XARAJATLAR
+  // ===================================================================
 
   Future<void> _addExpenseDialog() async {
     final titleCtrl = TextEditingController();
@@ -243,17 +421,29 @@ class _ByudjetXarajatlarState extends State<ByudjetXarajatlar> {
               onPressed: () async {
                 final amount = double.tryParse(amountCtrl.text.trim());
                 if (titleCtrl.text.trim().isEmpty || amount == null) return;
-                await FirebaseFirestore.instance.collection('xarajatlar').add({
-                  'title': titleCtrl.text.trim(),
-                  'category': category,
-                  'amount': amount,
-                  'date': Timestamp.fromDate(date),
-                  'monthKey': _monthKey(date),
-                  'createdBy': widget.user?.id,
-                  'createdByName': widget.user?.fullName,
-                  'createdAt': FieldValue.serverTimestamp(),
-                });
-                if (ctx.mounted) Navigator.pop(ctx);
+
+                try {
+                  // Backend `description` maydonini ishlatadi — eski
+                  // Firestore'dagi `title` shunga mos keladi.
+                  // `created_by` server tomonda avtomatik yoziladi.
+                  await _api.post('expenses', body: {
+                    'amount': amount,
+                    'category': category,
+                    'description': titleCtrl.text.trim(),
+                    'date': date.toIso8601String().split('T').first,
+                  });
+                  if (ctx.mounted) Navigator.pop(ctx);
+                  await _qaytaYukla();
+                } catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text("Xarajatni saqlab bo'lmadi: $e"),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
               },
               child:
                   const Text("Qo'shish", style: TextStyle(color: Colors.white)),
@@ -265,41 +455,28 @@ class _ByudjetXarajatlarState extends State<ByudjetXarajatlar> {
   }
 
   Future<void> _deleteExpense(String id) async {
-    await FirebaseFirestore.instance.collection('xarajatlar').doc(id).delete();
+    if (id.isEmpty) return;
+    try {
+      await _api.delete('expenses/$id');
+      await _qaytaYukla();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Xarajatni o'chirib bo'lmadi: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
-  Future<double> _incomeForMonth(DateTime month) async {
-    final start = DateTime(month.year, month.month, 1);
-    final end = DateTime(month.year, month.month + 1, 1);
-    double total = 0;
-    final snap = await FirebaseFirestore.instance
-        .collection('tolov_cheklari')
-        .where('status', isEqualTo: 'approved')
-        .get();
-    for (final doc in snap.docs) {
-      final d = doc.data();
-      DateTime? refDate;
-      try {
-        if (d['paymentDate'] != null) {
-          refDate = (d['paymentDate'] as Timestamp).toDate();
-        } else if (d['uploadedAt'] != null) {
-          refDate = (d['uploadedAt'] as Timestamp).toDate();
-        }
-      } catch (_) {}
-      if (refDate == null ||
-          refDate.isBefore(start) ||
-          !refDate.isBefore(end)) {
-        continue;
-      }
-      total += (d['amount'] as num? ?? 0).toDouble();
-    }
-    return total;
-  }
+  // ===================================================================
+  // KO'RINISH
+  // ===================================================================
 
   @override
   Widget build(BuildContext context) {
-    final monthKey = _monthKey(_selectedMonth);
-
     return Container(
       color: _C.bgBase,
       child: Column(
@@ -336,194 +513,159 @@ class _ByudjetXarajatlarState extends State<ByudjetXarajatlar> {
             ),
           ),
           Expanded(
-            child: StreamBuilder<DocumentSnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('moliya_byudjetlari')
-                  .doc(monthKey)
-                  .snapshots(),
-              builder: (context, budgetSnap) {
-                if (budgetSnap.hasError) {
+            child: FutureBuilder<_MoliyaMalumot>(
+              future: _malumot,
+              builder: (context, snap) {
+                if (snap.hasError) {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 40),
                     child: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(
-                          "Byudjetni yuklashda xatolik:\n${budgetSnap.error}",
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: _C.coral, fontSize: 12),
-                        ),
+                      child: Column(
+                        children: [
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(
+                              "Ma'lumotni yuklashda xatolik:\n${snap.error}",
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  color: _C.coral, fontSize: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: _qaytaYukla,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: const Text('Qayta urinish'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _C.purple,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );
                 }
-                final budgetData =
-                    budgetSnap.data?.data() as Map<String, dynamic>?;
-                final budget =
-                    (budgetData?['monthlyBudget'] as num? ?? 0).toDouble();
 
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('xarajatlar')
-                      .where('monthKey', isEqualTo: monthKey)
-                      .snapshots(),
-                  builder: (context, expSnap) {
-                    if (expSnap.hasError) {
-                      // Odatda bu yerga Firestore composite index
-                      // yo'qligi sababli tushiladi (monthKey + date
-                      // bo'yicha so'rov index talab qiladi).
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 40),
-                        child: Center(
-                          child: Column(
-                            children: [
-                              const Icon(Icons.error_outline_rounded,
-                                  size: 48, color: _C.coral),
-                              const SizedBox(height: 10),
-                              Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 20),
-                                child: Text(
-                                  "Xarajatlarni yuklashda xatolik:\n${expSnap.error}",
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                      color: _C.coral, fontSize: 12),
-                                ),
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: CircularProgressIndicator(color: _C.violet),
+                    ),
+                  );
+                }
+
+                final malumot = snap.data;
+                final budget = malumot?.byudjet ?? 0;
+                final income = malumot?.tushum ?? 0;
+
+                // Xarajatlar allaqachon _yukla() da tanlangan oy
+                // bo'yicha filtrlangan va tartiblangan.
+                final sortedExpenseDocs =
+                    malumot?.xarajatlar ?? const <Map<String, dynamic>>[];
+
+                final totalExpenses = sortedExpenseDocs.fold<double>(
+                  0,
+                  (sum, d) =>
+                      sum +
+                      (double.tryParse((d['amount'] ?? 0).toString()) ?? 0),
+                );
+
+                final remaining = budget - totalExpenses;
+
+                return RefreshIndicator(
+                  color: _C.violet,
+                  backgroundColor: _C.bgCard,
+                  onRefresh: _qaytaYukla,
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildBudgetCard(budget, remaining),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _StatMini(
+                                icon: Icons.trending_up_rounded,
+                                color: _C.mint,
+                                label: "Tushum",
+                                value: income.toStringAsFixed(0),
                               ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-                    if (expSnap.connectionState == ConnectionState.waiting) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 40),
-                        child: Center(
-                          child: CircularProgressIndicator(color: _C.violet),
-                        ),
-                      );
-                    }
-                    final expenseDocs = expSnap.data?.docs ?? [];
-                    final sortedExpenseDocs = [...expenseDocs]..sort((a, b) {
-                        final da = (a.data() as Map<String, dynamic>)['date'];
-                        final db = (b.data() as Map<String, dynamic>)['date'];
-                        final ta =
-                            da is Timestamp ? da.toDate() : DateTime(1970);
-                        final tb =
-                            db is Timestamp ? db.toDate() : DateTime(1970);
-                        return tb.compareTo(ta); // descending
-                      });
-                    final totalExpenses = expenseDocs.fold<double>(
-                      0,
-                      (sum, doc) =>
-                          sum +
-                          ((doc.data() as Map<String, dynamic>)['amount']
-                                  as num? ??
-                              0),
-                    );
-
-                    return FutureBuilder<double>(
-                      future: _incomeForMonth(_selectedMonth),
-                      builder: (context, incomeSnap) {
-                        final income = incomeSnap.data ?? 0;
-                        final remaining = budget - totalExpenses;
-
-                        return RefreshIndicator(
-                          color: _C.violet,
-                          backgroundColor: _C.bgCard,
-                          onRefresh: () async => setState(() {}),
-                          child: SingleChildScrollView(
-                            physics: const AlwaysScrollableScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildBudgetCard(budget, remaining),
-                                const SizedBox(height: 14),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _StatMini(
-                                        icon: Icons.trending_up_rounded,
-                                        color: _C.mint,
-                                        label: "Tushum",
-                                        value: income.toStringAsFixed(0),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _StatMini(
-                                        icon: Icons.trending_down_rounded,
-                                        color: _C.coral,
-                                        label: "Xarajat",
-                                        value:
-                                            totalExpenses.toStringAsFixed(0),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 18),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    const Text(
-                                      "Xarajatlar ro'yxati",
-                                      style: TextStyle(
-                                          color: _C.white,
-                                          fontSize: 14.5,
-                                          fontWeight: FontWeight.w800),
-                                    ),
-                                    TextButton.icon(
-                                      onPressed: _addExpenseDialog,
-                                      icon: const Icon(Icons.add_rounded,
-                                          size: 18, color: _C.violet),
-                                      label: const Text("Qo'shish",
-                                          style: TextStyle(color: _C.violet)),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                if (sortedExpenseDocs.isEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 40),
-                                    child: Center(
-                                      child: Column(
-                                        children: [
-                                          Icon(Icons.receipt_outlined,
-                                              size: 48, color: _C.muted),
-                                          const SizedBox(height: 10),
-                                          Text("Bu oyda xarajat kiritilmagan",
-                                              style: TextStyle(
-                                                  color: _C.muted,
-                                                  fontSize: 13)),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                else
-                                  ...sortedExpenseDocs.map((doc) {
-                                    final d =
-                                        doc.data() as Map<String, dynamic>;
-                                    return _ExpenseCard(
-                                      title: d['title'] ?? '',
-                                      category: d['category'] ?? '',
-                                      amount:
-                                          (d['amount'] as num? ?? 0).toDouble(),
-                                      date: d['date'] != null
-                                          ? (d['date'] as Timestamp).toDate()
-                                          : null,
-                                      onDelete: () => _deleteExpense(doc.id),
-                                    );
-                                  }),
-                              ],
                             ),
-                          ),
-                        );
-                      },
-                    );
-                  },
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _StatMini(
+                                icon: Icons.trending_down_rounded,
+                                color: _C.coral,
+                                label: "Xarajat",
+                                value: totalExpenses.toStringAsFixed(0),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "Xarajatlar ro'yxati",
+                              style: TextStyle(
+                                  color: _C.white,
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w800),
+                            ),
+                            TextButton.icon(
+                              onPressed: _addExpenseDialog,
+                              icon: const Icon(Icons.add_rounded,
+                                  size: 18, color: _C.violet),
+                              label: const Text("Qo'shish",
+                                  style: TextStyle(color: _C.violet)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        if (sortedExpenseDocs.isEmpty)
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 40),
+                            child: Center(
+                              child: Column(
+                                children: [
+                                  Icon(Icons.receipt_outlined,
+                                      size: 48, color: _C.muted),
+                                  const SizedBox(height: 10),
+                                  Text("Bu oyda xarajat kiritilmagan",
+                                      style: TextStyle(
+                                          color: _C.muted, fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          ...sortedExpenseDocs.map((d) {
+                            return _ExpenseCard(
+                              // Backend `description` yozadi; eski
+                              // Firestore `title` yozardi.
+                              title: (d['description'] ?? d['title'] ?? '')
+                                  .toString(),
+                              category: (d['category'] ?? '').toString(),
+                              amount: double.tryParse(
+                                      (d['amount'] ?? 0).toString()) ??
+                                  0,
+                              date: DateTime.tryParse(
+                                  (d['date'] ?? '').toString()),
+                              onDelete: () =>
+                                  _deleteExpense((d['id'] ?? '').toString()),
+                            );
+                          }),
+                      ],
+                    ),
+                  ),
                 );
               },
             ),

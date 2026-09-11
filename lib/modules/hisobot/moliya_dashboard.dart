@@ -1,12 +1,20 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../models/user_model.dart';
-import 'qarzdorlar_royxati.dart';
+import '../services/api_service.dart';
 
 // ─── Moliya bo'limi — Dashboard ─────────────────────────────────────
 // Moliyachi profiliga kirganda ko'radigan umumiy ko'rinish: shu oylik
 // tushum, kutilayotgan murojaatlar, qarzdorlar soni va byudjet holati.
+//
+// Ma'lumot Laravel API'dan olinadi:
+//   tushum / kutilayotgan -> GET /api/payments
+//   xarajatlar            -> GET /api/expenses
+//   byudjet               -> GET /api/budgets
+//   qarzdorlar            -> GET /api/rooms + /api/students + /api/payments
+//
+// Ilgari to'rtta Firestore oqimi real vaqtda tinglanardi. Endi
+// ma'lumot ekran ochilganda yuklanadi va pastga tortib yangilanadi.
 
 class _C {
   static const bgBase = Color(0xFF0F0D1A);
@@ -35,38 +43,19 @@ class MoliyaDashboard extends StatefulWidget {
 }
 
 class _MoliyaDashboardState extends State<MoliyaDashboard> {
+  final _api = ApiService();
+
   double _monthIncome = 0;
-  // 🌍 Ikkala yotoqxona tushumini alohida saqlaymiz, shunda ikkala
-  // real-vaqt oqimidan (boys/girls) kelgan yangilanish boshqasining
-  // qiymatini "0" bilan bosib ketmaydi — har biri o'zining ulushini
-  // yangilaydi, keyin ikkalasi qo'shilib _monthIncome hosil bo'ladi.
-  double _boysMonthIncome = 0;
-  double _girlsMonthIncome = 0;
   int _pendingCount = 0;
   int _debtorsCount = 0;
   double _monthExpenses = 0;
   double _monthBudget = 0;
   bool _isLoading = true;
 
-  StreamSubscription<QuerySnapshot>? _expensesSub;
-  StreamSubscription<QuerySnapshot>? _incomeSub;
-  StreamSubscription<QuerySnapshot>? _girlsIncomeSub;
-  StreamSubscription<DocumentSnapshot>? _budgetSub;
-
   @override
   void initState() {
     super.initState();
     _loadData();
-    _listenLive();
-  }
-
-  @override
-  void dispose() {
-    _expensesSub?.cancel();
-    _incomeSub?.cancel();
-    _girlsIncomeSub?.cancel();
-    _budgetSub?.cancel();
-    super.dispose();
   }
 
   String get _monthKey {
@@ -74,190 +63,112 @@ class _MoliyaDashboardState extends State<MoliyaDashboard> {
     return '${now.year}-${now.month.toString().padLeft(2, '0')}';
   }
 
-  /// Xarajat, tushum va byudjetni real-vaqtda kuzatib turadi — shunda
-  /// bu raqamlar "Byudjet va xarajatlar" sahifasidagi bilan doim mos
-  /// keladi, sahifani qayta ochish yoki pastga tortish shart emas.
-  void _listenLive() {
-    final fs = FirebaseFirestore.instance;
-    final now = DateTime.now();
-    final start = DateTime(now.year, now.month, 1);
-    final end = DateTime(now.year, now.month + 1, 1);
+  // ===================================================================
+  // MA'LUMOT YUKLASH
+  // ===================================================================
 
-    _expensesSub = fs
-        .collection('xarajatlar')
-        .where('monthKey', isEqualTo: _monthKey)
-        .snapshots()
-        .listen((snap) {
-      double total = 0;
-      for (final doc in snap.docs) {
-        total += (doc.data()['amount'] as num? ?? 0).toDouble();
-      }
-      if (mounted) setState(() => _monthExpenses = total);
-    }, onError: (e) => debugPrint('Xarajatlarni kuzatishda xatolik: $e'));
-
-    _incomeSub = fs
-        .collection('tolov_cheklari')
-        .where('status', isEqualTo: 'approved')
-        .snapshots()
-        .listen((snap) {
-      double total = 0;
-      for (final doc in snap.docs) {
-        final d = doc.data();
-        DateTime? refDate;
-        try {
-          if (d['paymentDate'] != null) {
-            refDate = (d['paymentDate'] as Timestamp).toDate();
-          } else if (d['uploadedAt'] != null) {
-            refDate = (d['uploadedAt'] as Timestamp).toDate();
-          }
-        } catch (_) {}
-        if (refDate == null ||
-            refDate.isBefore(start) ||
-            !refDate.isBefore(end)) {
-          continue;
-        }
-        total += (d['amount'] as num? ?? 0).toDouble();
-      }
-      _boysMonthIncome = total;
-      if (mounted) setState(() => _monthIncome = _boysMonthIncome + _girlsMonthIncome);
-    }, onError: (e) => debugPrint('Tushumni kuzatishda xatolik: $e'));
-
-    // ✅ TUZATILDI: avval bu yerda faqat 'tolov_cheklari' (o'g'il bolalar
-    // to'lov cheklari) tinglanardi — qizlar yotoqxonasida qo'lda
-    // kiritilgan to'lovlar ('girls_payments') "Bu oylik tushum"ga umuman
-    // qo'shilmas edi. Endi ikkalasi ham real vaqtda kuzatiladi va
-    // yig'indisi ko'rsatiladi.
-    _girlsIncomeSub = fs
-        .collection('girls_payments')
-        .where('status', isEqualTo: 'paid')
-        .snapshots()
-        .listen((snap) {
-      double total = 0;
-      for (final doc in snap.docs) {
-        final d = doc.data();
-        DateTime? refDate;
-        try {
-          if (d['paidAt'] != null) {
-            refDate = (d['paidAt'] as Timestamp).toDate();
-          } else if (d['createdAt'] != null) {
-            refDate = (d['createdAt'] as Timestamp).toDate();
-          }
-        } catch (_) {}
-        if (refDate == null ||
-            refDate.isBefore(start) ||
-            !refDate.isBefore(end)) {
-          continue;
-        }
-        total += (d['amount'] as num? ?? 0).toDouble();
-      }
-      _girlsMonthIncome = total;
-      if (mounted) setState(() => _monthIncome = _boysMonthIncome + _girlsMonthIncome);
-    }, onError: (e) => debugPrint('Qizlar tushumini kuzatishda xatolik: $e'));
-
-    _budgetSub = fs
-        .collection('moliya_byudjetlari')
-        .doc(_monthKey)
-        .snapshots()
-        .listen((doc) {
-      final budget = (doc.data()?['monthlyBudget'] as num? ?? 0).toDouble();
-      if (mounted) setState(() => _monthBudget = budget);
-    }, onError: (e) => debugPrint('Byudjetni kuzatishda xatolik: $e'));
+  double _son(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
-    final fs = FirebaseFirestore.instance;
+
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, 1);
     final end = DateTime(now.year, now.month + 1, 1);
 
+    double income = 0;
+    int pending = 0;
+    double expTotal = 0;
+    double budget = 0;
+    int debtors = 0;
+
     try {
-      // Tasdiqlangan to'lovlar (shu oy) — O'g'il bolalar
-      final checks = await fs
-          .collection('tolov_cheklari')
-          .where('status', isEqualTo: 'approved')
-          .get();
-      double income = 0;
-      for (final doc in checks.docs) {
-        final d = doc.data();
-        DateTime? refDate;
-        try {
-          if (d['paymentDate'] != null) {
-            refDate = (d['paymentDate'] as Timestamp).toDate();
-          } else if (d['uploadedAt'] != null) {
-            refDate = (d['uploadedAt'] as Timestamp).toDate();
+      // --- To'lovlar: tushum va kutilayotganlar ---
+      //
+      // Laravel'da qizlar uchun alohida jadval yo'q — hamma to'lov
+      // `payments` da. Shuning uchun ilgarigi ikki so'rov (boys +
+      // girls) o'rniga bitta so'rov yetarli.
+      final tolovlar = <Map<String, dynamic>>[];
+      try {
+        final javob = await _api.get('payments');
+        final royxat = javob['data'];
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is Map) tolovlar.add(Map<String, dynamic>.from(e));
           }
-        } catch (_) {}
-        if (refDate == null ||
-            refDate.isBefore(start) ||
-            !refDate.isBefore(end)) {
+        }
+      } catch (e) {
+        debugPrint("To'lovlarni yuklashda xatolik: $e");
+      }
+
+      for (final d in tolovlar) {
+        final holat = (d['status'] ?? '').toString().toLowerCase();
+
+        if (holat == 'pending') {
+          pending++;
           continue;
         }
-        income += (d['amount'] as num? ?? 0).toDouble();
-      }
-      _boysMonthIncome = income;
 
-      // ✅ TUZATILDI: Qiz bolalar tomonida qo'lda kiritilgan to'lovlar
-      // ('girls_payments', status='paid') ham shu oylik tushumga qo'shiladi.
-      final girlsChecks = await fs
-          .collection('girls_payments')
-          .where('status', isEqualTo: 'paid')
-          .get();
-      double girlsIncome = 0;
-      for (final doc in girlsChecks.docs) {
-        final d = doc.data();
-        DateTime? refDate;
-        try {
-          if (d['paidAt'] != null) {
-            refDate = (d['paidAt'] as Timestamp).toDate();
-          } else if (d['createdAt'] != null) {
-            refDate = (d['createdAt'] as Timestamp).toDate();
+        if (holat != 'approved' && holat != 'paid') continue;
+
+        final sana = DateTime.tryParse(
+          (d['paid_at'] ?? d['created_at'] ?? '').toString(),
+        );
+        if (sana == null) continue;
+        if (sana.isBefore(start) || !sana.isBefore(end)) continue;
+
+        income += _son(d['amount']);
+      }
+
+      // --- Xarajatlar (shu oy) ---
+      try {
+        final javob = await _api.get('expenses');
+        final royxat = javob['data'];
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is! Map) continue;
+            final sana = DateTime.tryParse((e['date'] ?? '').toString());
+            if (sana == null) continue;
+            final kalit =
+                '${sana.year}-${sana.month.toString().padLeft(2, '0')}';
+            if (kalit != _monthKey) continue;
+            expTotal += _son(e['amount']);
           }
-        } catch (_) {}
-        if (refDate == null ||
-            refDate.isBefore(start) ||
-            !refDate.isBefore(end)) {
-          continue;
         }
-        girlsIncome += (d['amount'] as num? ?? 0).toDouble();
-      }
-      _girlsMonthIncome = girlsIncome;
-      income += girlsIncome;
-
-      // Kutilayotgan murojaatlar (o'g'il + qiz bolalar)
-      final pending = await fs
-          .collection('tolov_cheklari')
-          .where('status', isEqualTo: 'pending')
-          .get();
-      final girlsPending = await fs
-          .collection('girls_payments')
-          .where('status', isEqualTo: 'pending')
-          .get();
-
-      // Qarzdorlar
-      final debtors = await fetchDebtors();
-
-      // Xarajatlar (shu oy)
-      final expenses = await fs
-          .collection('xarajatlar')
-          .where('monthKey', isEqualTo: _monthKey)
-          .get();
-      double expTotal = 0;
-      for (final doc in expenses.docs) {
-        expTotal += (doc.data()['amount'] as num? ?? 0).toDouble();
+      } catch (e) {
+        debugPrint('Xarajatlarni yuklashda xatolik: $e');
       }
 
-      // Byudjet
-      final budgetDoc =
-          await fs.collection('moliya_byudjetlari').doc(_monthKey).get();
-      final budget =
-          (budgetDoc.data()?['monthlyBudget'] as num? ?? 0).toDouble();
+      // --- Byudjet (shu oy) ---
+      try {
+        final javob = await _api.get('budgets');
+        final royxat = javob['data'];
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is! Map) continue;
+            if ((e['month_key'] ?? '').toString() == _monthKey) {
+              budget = _son(e['amount']);
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Byudjetni yuklashda xatolik: $e');
+      }
+
+      // --- Qarzdorlar ---
+      debtors = await _qarzdorlarSoni(tolovlar, start, end);
 
       if (!mounted) return;
       setState(() {
         _monthIncome = income;
-        _pendingCount = pending.docs.length + girlsPending.docs.length;
-        _debtorsCount = debtors.length;
+        _pendingCount = pending;
+        _debtorsCount = debtors;
         _monthExpenses = expTotal;
         _monthBudget = budget;
         _isLoading = false;
@@ -267,6 +178,80 @@ class _MoliyaDashboardState extends State<MoliyaDashboard> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  /// Shu oy uchun to'lov qilmagan, xonaga biriktirilgan talabalar soni.
+  ///
+  /// Ilgari bu hisob `qarzdorlar_royxati.dart` dagi fetchDebtors()
+  /// funksiyasidan olinardi — u Firestore'da edi. Bu yerda Laravel
+  /// ma'lumoti asosida qayta hisoblanadi.
+  ///
+  /// Mantiq: xonasi bor talabalardan shu oyda tasdiqlangan to'lovi
+  /// bo'lmaganlari qarzdor hisoblanadi.
+  Future<int> _qarzdorlarSoni(
+    List<Map<String, dynamic>> tolovlar,
+    DateTime start,
+    DateTime end,
+  ) async {
+    try {
+      // Shu oyda to'lagan talabalar
+      final tolaganlar = <String>{};
+      for (final d in tolovlar) {
+        final holat = (d['status'] ?? '').toString().toLowerCase();
+        if (holat != 'approved' && holat != 'paid') continue;
+
+        final sana = DateTime.tryParse(
+          (d['paid_at'] ?? d['created_at'] ?? '').toString(),
+        );
+        if (sana == null) continue;
+        if (sana.isBefore(start) || !sana.isBefore(end)) continue;
+
+        final sid = (d['student_id'] ?? '').toString();
+        if (sid.isNotEmpty) tolaganlar.add(sid);
+      }
+
+      // Xonasi bor talabalar
+      int qarzdor = 0;
+      int sahifa = 1;
+      int oxirgi = 1;
+
+      do {
+        final javob = await _api.get(
+          'students?role=talaba&per_page=100&page=$sahifa',
+        );
+
+        final royxat = javob['data'];
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is! Map) continue;
+
+            // Xonasi yo'q talaba qarzdor emas — unga hali to'lov
+            // majburiyati yuklanmagan.
+            final b = e['active_room_assignment'] ?? e['activeRoomAssignment'];
+            if (b is! Map) continue;
+
+            final sid = (e['id'] ?? '').toString();
+            if (sid.isEmpty) continue;
+            if (!tolaganlar.contains(sid)) qarzdor++;
+          }
+        }
+
+        final meta = javob['meta'];
+        oxirgi = meta is Map
+            ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+            : sahifa;
+        sahifa++;
+      } while (sahifa <= oxirgi && sahifa <= 100);
+
+      return qarzdor;
+    } catch (e) {
+      debugPrint('Qarzdorlarni hisoblashda xatolik: $e');
+      return 0;
+    }
+  }
+
+  // ===================================================================
+  // KO'RINISH
+  // ===================================================================
 
   @override
   Widget build(BuildContext context) {
@@ -373,12 +358,10 @@ class _MoliyaDashboardState extends State<MoliyaDashboard> {
 
     final crossAxisCount = maxWidth > 900 ? 4 : (maxWidth > 560 ? 4 : 2);
 
-    // ✅ Oldin balandlik "childAspectRatio" orqali kenglikka nisbatan
-    // hisoblanardi — oyna/ekran torayganda balandlik ham qisqarib,
-    // ichidagi icon+matn sig'may "BOTTOM OVERFLOWED" xatosini berardi.
-    // Endi balandlik ekran kengligidan mustaqil, doimiy piksel
+    // Balandlik ekran kengligidan mustaqil, doimiy piksel
     // (mainAxisExtent) qilib belgilangan — kontent uchun har doim
-    // yetarli joy bo'ladi.
+    // yetarli joy bo'ladi. childAspectRatio ishlatilganda tor
+    // ekranda "BOTTOM OVERFLOWED" xatosi chiqardi.
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),

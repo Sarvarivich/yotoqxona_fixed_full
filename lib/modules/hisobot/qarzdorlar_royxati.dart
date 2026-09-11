@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/api_service.dart';
 
-// ─── Moliya bo'limi — Qarzdorlar ro'yxati ──────────────────────────
+// Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™ Moliya bo'limi Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ Qarzdorlar ro'yxati Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™
 // Xonaga biriktirilgan har bir talaba uchun uning BARCHA tasdiqlangan
 // (approved) to'lovlari yig'indisi xona narxidan kam bo'lsa, u
 // "qarzdor" deb hisoblanadi. Qarz miqdori = xona narxi - jami
@@ -32,7 +32,7 @@ class DebtorInfo {
   final double expected;
   final double paid;
 
-  /// 'boys' | 'girls' — talaba qaysi yotoqxonaga tegishli ekanini
+  /// 'boys' | 'girls' Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ talaba qaysi yotoqxonaga tegishli ekanini
   /// bildiradi, ro'yxatda belgi (badge) sifatida ko'rsatish uchun.
   final String hostel;
   double get debt => (expected - paid) < 0 ? 0 : (expected - paid);
@@ -50,144 +50,147 @@ class DebtorInfo {
 
 /// Barcha qarzdor talabalarni hisoblab beradi.
 /// Qarz = xonaning (bir oylik) narxi - talabaning BARCHA tasdiqlangan
-/// (approved) to'lovlari yig'indisi. Oyga bog'liq emas — talaba
+/// (approved) to'lovlari yig'indisi. Oyga bog'liq emas Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ talaba
 /// ro'yxatga olingandan beri to'lagan har qanday tasdiqlangan summa
 /// hisobga olinadi.
+/// Barcha qarzdor talabalarni hisoblab beradi.
+///
+/// Qarz = xonaning bir oylik narxi - talabaning BARCHA
+/// tasdiqlangan to'lovlari yig'indisi. Oyga bog'liq emas.
+///
+/// Ilgari beshta Firestore so'rovi bor edi: xonalar,
+/// foydalanuvchilar, girls_students, tolov_cheklari va
+/// girls_payments. Laravel'da qizlar uchun alohida jadval
+/// yo'q - hamma talaba users, hamma to'lov payments da.
+/// Shuning uchun uchta so'rov yetarli.
 Future<List<DebtorInfo>> fetchDebtors() async {
-  final fs = FirebaseFirestore.instance;
+  final api = ApiService();
 
-  // 1) Barcha xonalarni olish -> roomId -> (narx, xona raqami)
-  // Diqqat: ilovada xonaga talaba biriktirishning ikki xil ekrani bor —
-  // biri talabaning roomId'siga xonaning Firestore hujjat ID'sini
-  // yozadi (xona_taqsimlash.dart), ikkinchisi esa xona RAQAMINI
-  // (masalan "204") yozadi (room_assignment_screen.dart). Shuning
-  // uchun narxlar jadvalini ikkala kalit bo'yicha ham to'ldiramiz,
-  // toifasidan qat'iy nazar talabaning xonasi to'g'ri topilsin.
-  final roomsSnap = await fs.collection('xonalar').get();
+  double son(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
+
+  // --- 1) Xonalar: ID va raqam bo'yicha narx/nom xaritasi ---
+  //
+  // Ikkala kalit ham qo'shiladi, chunki talabaning xonasi
+  // ba'zan UUID, ba'zan raqam ko'rinishida keladi.
   final Map<String, double> roomPrice = {};
   final Map<String, String> roomLabel = {};
-  for (final doc in roomsSnap.docs) {
-    final d = doc.data();
-    final price = (d['pricePerMonth'] as num? ?? d['monthlyRate'] as num? ?? 0)
-        .toDouble();
-    final roomNum = d['roomNumber'];
-    final label = roomNum != null ? '$roomNum-xona' : 'Xona';
 
-    roomPrice[doc.id] = price;
-    roomLabel[doc.id] = label;
-    if (roomNum != null) {
-      final numKey = roomNum.toString();
-      roomPrice[numKey] = price;
-      roomLabel[numKey] = label;
+  try {
+    for (final x in await api.getRooms()) {
+      if (x is! Map) continue;
+      final d = Map<String, dynamic>.from(x);
+
+      final price = son(d['price_per_month'] ?? d['pricePerMonth']);
+      final roomNum = d['room_number'] ?? d['roomNumber'];
+      final label = roomNum != null ? '$roomNum-xona' : 'Xona';
+
+      final id = (d['id'] ?? '').toString();
+      if (id.isNotEmpty) {
+        roomPrice[id] = price;
+        roomLabel[id] = label;
+      }
+      if (roomNum != null) {
+        final numKey = roomNum.toString();
+        roomPrice[numKey] = price;
+        roomLabel[numKey] = label;
+      }
     }
+  } catch (e) {
+    debugPrint('Xonalarni yuklashda xatolik: $e');
   }
 
-  // 2) Barcha talabalarni olish — IKKI manbadan:
-  //    a) O'zi ro'yxatdan o'tganlar: 'foydalanuvchilar' (role == 'talaba').
-  //       Bu yerda hostel bo'yicha filtr YO'Q, shuning uchun bu so'rov
-  //       o'g'il bolalar VA qiz bolalar yotoqxonasida o'zi ro'yxatdan
-  //       o'tgan barcha talabalarni avtomatik qamrab oladi.
-  //    b) Admin/mudira QO'LDA qo'shgan qiz bolalar talabalari:
-  //       'girls_students' kolleksiyasi. Bunday talabalarning Firebase
-  //       Auth hisobi yo'q, shuning uchun ular 'foydalanuvchilar'da
-  //       umuman ko'rinmaydi — shu sabab alohida so'rov qilinadi.
-  final studentsSnap = await fs
-      .collection('foydalanuvchilar')
-      .where('role', isEqualTo: 'talaba')
-      .get();
-  final girlsStudentsSnap = await fs.collection('girls_students').get();
-
-  // 3) Har bir talabaning BARCHA tasdiqlangan to'lovlarini yig'ib
-  //    chiqamiz — sana bo'yicha cheklov yo'q. Bu ham IKKI manbadan:
-  //    a) 'tolov_cheklari' (status == 'approved') — talaba o'zi yuborib,
-  //       moliyachi tasdiqlagan cheklar (ikkala hostel uchun ham).
-  //    b) 'girls_payments' (status == 'paid') — admin/mudira tomonidan
-  //       qo'lda kiritilgan qiz bolalar to'lovlari (odatda 'girls_students'
-  //       orqali qo'shilgan, o'zi chek yubora olmaydigan talabalar uchun).
+  // --- 2) Tasdiqlangan to'lovlar: talaba -> jami summa ---
   final totalPaid = <String, double>{};
   try {
-    final checksSnap = await fs
-        .collection('tolov_cheklari')
-        .where('status', isEqualTo: 'approved')
-        .get();
-    for (final doc in checksSnap.docs) {
-      final d = doc.data();
-      final studentId = d['studentId'] as String?;
-      if (studentId == null) continue;
+    final javob = await api.get('payments');
+    final royxat = javob['data'];
+    if (royxat is List) {
+      for (final e in royxat) {
+        if (e is! Map) continue;
+        final d = Map<String, dynamic>.from(e);
 
-      final amount = (d['amount'] as num? ?? 0).toDouble();
-      totalPaid[studentId] = (totalPaid[studentId] ?? 0) + amount;
+        final holat = (d['status'] ?? '').toString().toLowerCase();
+        if (holat != 'approved' && holat != 'paid') continue;
+
+        final sid = (d['student_id'] ?? d['studentId'] ?? '').toString();
+        if (sid.isEmpty) continue;
+
+        totalPaid[sid] = (totalPaid[sid] ?? 0) + son(d['amount']);
+      }
     }
-  } catch (_) {}
-  try {
-    final girlsPaymentsSnap = await fs
-        .collection('girls_payments')
-        .where('status', isEqualTo: 'paid')
-        .get();
-    for (final doc in girlsPaymentsSnap.docs) {
-      final d = doc.data();
-      final studentId = d['studentId'] as String?;
-      if (studentId == null || studentId.isEmpty) continue;
+  } catch (e) {
+    debugPrint("To'lovlarni yuklashda xatolik: $e");
+  }
 
-      final amount = (d['amount'] as num? ?? 0).toDouble();
-      totalPaid[studentId] = (totalPaid[studentId] ?? 0) + amount;
-    }
-  } catch (_) {}
-
+  // --- 3) Talabalar (sahifama-sahifa) ---
   final List<DebtorInfo> debtors = [];
 
-  // Ikkala manbadan kelgan talabani bir xil qoidalar bilan qarzdorlar
-  // ro'yxatiga qo'shuvchi yordamchi funksiya (kod takrorlanmasligi uchun).
-  void addIfHasRoom({
-    required String id,
-    required String fullName,
-    required String? phoneNumber,
-    required String? roomId,
-    String hostel = 'boys',
-  }) {
-    if (roomId == null || roomId.isEmpty) return; // xonasi yo'q talaba
-    final expected = roomPrice[roomId];
-    if (expected == null || expected <= 0) return;
+  try {
+    int sahifa = 1;
+    int oxirgi = 1;
 
-    final paid = totalPaid[id] ?? 0;
-    debtors.add(DebtorInfo(
-      studentId: id,
-      fullName: fullName.isNotEmpty ? fullName : 'Noma\'lum talaba',
-      phoneNumber: phoneNumber,
-      roomLabel: roomLabel[roomId] ?? 'Xona',
-      expected: expected,
-      paid: paid,
-      hostel: hostel,
-    ));
-  }
+    do {
+      final javob = await api.get(
+        'students?role=talaba&per_page=100&page=$sahifa',
+      );
 
-  // Endi BARCHA xonaga biriktirilgan talabalar ro'yxatga kiradi —
-  // to'liq to'lagan talabalar ham ko'rinadi, ularning qarzi 0 so'm
-  // bo'lib chiqadi (DebtorInfo.debt getter shuni ta'minlaydi).
-  for (final doc in studentsSnap.docs) {
-    final d = doc.data();
-    final rawHostel = (d['hostel'] as String?)?.trim().toLowerCase();
-    addIfHasRoom(
-      id: doc.id,
-      fullName: (d['fullName'] as String?) ?? '',
-      phoneNumber: d['phoneNumber'] as String?,
-      roomId: d['roomId'] as String?,
-      hostel: (rawHostel == null || rawHostel.isEmpty) ? 'boys' : rawHostel,
-    );
-  }
-  for (final doc in girlsStudentsSnap.docs) {
-    final d = doc.data();
-    addIfHasRoom(
-      id: doc.id,
-      fullName: (d['fullName'] as String?) ?? '',
-      // ⚠️ 'girls_students' hujjatlarida telefon maydoni 'phone' deb
-      // nomlangan (foydalanuvchilar'dagi 'phoneNumber' emas).
-      phoneNumber: d['phone'] as String?,
-      roomId: d['roomId'] as String?,
-      // Bu kolleksiyadagi barcha talabalar qiz bolalar yotoqxonasiga
-      // tegishli — hujjatda alohida 'hostel' maydoni bo'lmasa ham.
-      hostel: 'girls',
-    );
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final e in royxat) {
+          if (e is! Map) continue;
+          final d = Map<String, dynamic>.from(e);
+
+          // Xonasi yo'q talaba ro'yxatga kirmaydi - unga hali
+          // to'lov majburiyati yuklanmagan.
+          final b =
+              d['active_room_assignment'] ?? d['activeRoomAssignment'];
+          if (b is! Map) continue;
+
+          // Xona kaliti: avval raqam, keyin UUID.
+          String? roomKey;
+          final xona = b['room'];
+          if (xona is Map) {
+            final raqam = xona['room_number'] ?? xona['roomNumber'];
+            if (raqam != null) roomKey = raqam.toString();
+            roomKey ??= (xona['id'] ?? '').toString();
+          }
+          roomKey ??= (b['room_id'] ?? '').toString();
+          if (roomKey.isEmpty) continue;
+
+          final expected = roomPrice[roomKey];
+          if (expected == null || expected <= 0) continue;
+
+          final id = (d['id'] ?? '').toString();
+          if (id.isEmpty) continue;
+
+          final ism = (d['full_name'] ?? d['fullName'] ?? '').toString();
+          final hostel =
+              (d['hostel'] ?? 'boys').toString().trim().toLowerCase();
+
+          debtors.add(DebtorInfo(
+            studentId: id,
+            fullName: ism.isNotEmpty ? ism : "Noma'lum talaba",
+            phoneNumber: (d['phone'] ?? d['phoneNumber'])?.toString(),
+            roomLabel: roomLabel[roomKey] ?? 'Xona',
+            expected: expected,
+            paid: totalPaid[id] ?? 0,
+            hostel: hostel.isEmpty ? 'boys' : hostel,
+          ));
+        }
+      }
+
+      final meta = javob['meta'];
+      oxirgi = meta is Map
+          ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+          : sahifa;
+      sahifa++;
+    } while (sahifa <= oxirgi && sahifa <= 100);
+  } catch (e) {
+    debugPrint('Talabalarni yuklashda xatolik: $e');
   }
 
   debtors.sort((a, b) => b.debt.compareTo(a.debt));
@@ -228,15 +231,16 @@ class _QarzdorlarRoyxatiState extends State<QarzdorlarRoyxati> {
 
   Future<void> _sendReminder(DebtorInfo d) async {
     try {
-      await FirebaseFirestore.instance.collection('bildirishnomalar').add({
-        'userId': d.studentId,
+      // Bildirishnoma Laravel orqali yuboriladi. Backend uni
+      // notifications jadvaliga yozadi. is_read va created_at
+      // server tomonda avtomatik to'ldiriladi.
+      await ApiService().post('notifications', body: {
+        'user_id': d.studentId,
         'title': "To'lov bo'yicha eslatma",
-        'body': "Hurmatli talaba, bu oy uchun ${d.roomLabel} to'lovingizdan "
-            "${d.debt.toStringAsFixed(0)} so'm qarzdorligingiz mavjud. "
-            "Iltimos, to'lovni amalga oshiring.",
+        'message': "Hurmatli talaba, bu oy uchun ${d.roomLabel} " +
+            "to'lovingizdan ${d.debt.toStringAsFixed(0)} so'm " +
+            "qarzdorligingiz mavjud. Iltimos, to'lovni amalga oshiring.",
         'type': 'payment_reminder',
-        'isRead': false,
-        'createdAt': FieldValue.serverTimestamp(),
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -345,7 +349,7 @@ class _QarzdorlarRoyxatiState extends State<QarzdorlarRoyxati> {
                             const SizedBox(height: 12),
                             Text(
                               all.isEmpty
-                                  ? "Bu oy uchun qarzdorlar yo'q 🎉"
+                                  ? "Bu oy uchun qarzdorlar yo'q Р РЋР вЂљР РЋРЎСџР В РІР‚в„–Р Р†Р вЂљР’В°"
                                   : "Qidiruv bo'yicha natija topilmadi",
                               style: TextStyle(color: _C.muted, fontSize: 13),
                             ),
@@ -548,7 +552,7 @@ class _DebtorCard extends StatelessWidget {
   }
 }
 
-/// 🚻 "O'g'il bolalar" / "Qiz bolalar" belgisi — moliyachi ro'yxatda
+/// Р РЋР вЂљР РЋРЎСџР РЋРІвЂћСћР вЂ™Р’В» "O'g'il bolalar" / "Qiz bolalar" belgisi Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ moliyachi ro'yxatda
 /// qaysi yotoqxonaga tegishli talaba ekanini bir qarashda ko'rishi uchun.
 class _HostelBadge extends StatelessWidget {
   final String hostel; // 'boys' | 'girls'

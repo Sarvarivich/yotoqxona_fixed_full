@@ -193,6 +193,59 @@ class AuthController extends Controller
     /**
      * Chiqish (Logout)
      */
+    /**
+     * Foydalanuvchi o'z profilini tahrirlaydi.
+     *
+     * PUT /api/students/{id} dan farqi: bu yerda faqat o'z
+     * yozuvi o'zgartiriladi va faqat xavfsiz maydonlar qabul
+     * qilinadi. Rol, bino va hisob holati bu yo'l bilan
+     * o'zgartirilmaydi - ular xodimlar ixtiyorida.
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+
+        $validator = Validator::make($request->all(), [
+            'full_name' => 'sometimes|string|max:255',
+            'phone' => 'nullable|string|max:30',
+            'faculty' => 'nullable|string',
+            'course' => 'nullable|integer|min:1|max:6',
+            'group_name' => 'nullable|string|max:50',
+            'student_id' => 'nullable|string|max:50',
+            'region' => 'nullable|string',
+            'district' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ma\'lumotlar xato kiritildi.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Faqat ruxsat etilgan maydonlar. 'role', 'hostel',
+        // 'is_active', 'jshshir', 'passport_id' bu yerda
+        // ATAYLAB yo'q.
+        $data = $request->only([
+            'full_name',
+            'phone',
+            'faculty',
+            'course',
+            'group_name',
+            'region',
+            'district',
+        ]);
+
+        $user->update($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Profil yangilandi.',
+            'data' => $user->fresh()->load('activeRoomAssignment.room'),
+        ]);
+    }
+
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
