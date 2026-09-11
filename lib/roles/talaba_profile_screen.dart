@@ -1,7 +1,9 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:async';
+import 'package:http/http.dart' as http;
 import '../modules/models/user_model.dart';
 import '../modules/models/room_model.dart';
 import '../modules/services/auth_service.dart';
@@ -11,6 +13,7 @@ import '../modules/bildirishnoma/bildirishnomalar_list.dart';
 import '../modules/murojaat/murojaatlar_list.dart';
 import '../modules/widgets/application_stepper.dart';
 import '../modules/services/api_service.dart';
+import '../modules/services/excel_download.dart';
 
 // в”Ђв”Ђв”Ђ Colors в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 class _C {
@@ -521,13 +524,38 @@ class _YotoqxonaTab extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
                 child: Row(
-                  children: const [
-                    Text(
+                  children: [
+                    const Text(
                       'Yotoqxona',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: _C.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Shartnoma faqat to'lovi moliya tomonidan
+                    // tasdiqlangan talabaga beriladi - buni backend
+                    // tekshiradi va aks holda tushunarli xabar qaytaradi.
+                    TextButton.icon(
+                      onPressed: () => _shartnomaniYuklash(context),
+                      icon: const Icon(
+                        Icons.download_rounded,
+                        size: 18,
+                        color: _C.teal,
+                      ),
+                      label: const Text(
+                        'Shartnoma',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: _C.teal,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(0, 34),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
                   ],
@@ -536,19 +564,15 @@ class _YotoqxonaTab extends StatelessWidget {
               Expanded(
                 child: user.roomId == null || user.roomId!.isEmpty
                     ? _buildEmpty(context)
-                    : FutureBuilder<QuerySnapshot>(
-                        // Diqqat: user.roomId вЂ” xona hujjatining Firestore ID'si
-                        // emas, balki xona RAQAMI (masalan "102"). Shuning
-                        // uchun doc(user.roomId) emas, roomNumber maydoni
-                        // bo'yicha qidiramiz (room_assignment_screen.dart'da
-                        // ham xuddi shu mantiq ishlatiladi).
-                        future: FirebaseFirestore.instance
-                            .collection('xonalar')
-                            .where('roomNumber',
-                                isEqualTo:
-                                    int.tryParse(user.roomId!) ?? user.roomId)
-                            .limit(1)
-                            .get(),
+                    : FutureBuilder<Map<String, dynamic>>(
+                        // Talabaning xonasi Laravel'dan olinadi.
+                        //
+                        // Ilgari Firestore'da xona RAQAMI bo'yicha
+                        // qidirilardi, chunki user.roomId da raqam
+                        // saqlanardi. Laravel'da /api/my-room
+                        // to'g'ridan-to'g'ri talabaning joriy xonasini
+                        // qaytaradi - qidirish shart emas.
+                        future: ApiService().getMyRoom(),
                         builder: (context, snapshot) {
                           if (snapshot.connectionState ==
                               ConnectionState.waiting) {
@@ -558,14 +582,25 @@ class _YotoqxonaTab extends StatelessWidget {
                               ),
                             );
                           }
-                          if (!snapshot.hasData ||
-                              snapshot.data!.docs.isEmpty) {
+
+                          final xom = snapshot.data?['data'];
+                          if (xom is! Map) {
                             return _buildEmpty(context);
                           }
-                          final doc = snapshot.data!.docs.first;
-                          final data = doc.data() as Map<String, dynamic>;
-                          data['id'] = doc.id;
-                          final room = RoomModel.fromJson(data);
+
+                          // Javob ikki ko'rinishda kelishi mumkin:
+                          // to'g'ridan-to'g'ri xona, yoki biriktirish
+                          // ichida room obyekti.
+                          final xona = xom['room'] is Map
+                              ? Map<String, dynamic>.from(xom['room'] as Map)
+                              : Map<String, dynamic>.from(xom);
+
+                          if (xona['id'] == null &&
+                              xona['room_number'] == null) {
+                            return _buildEmpty(context);
+                          }
+
+                          final room = RoomModel.fromJson(xona);
                           return _buildRoom(room);
                         },
                       ),
@@ -575,6 +610,83 @@ class _YotoqxonaTab extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Shartnomani yuklab oladi.
+  ///
+  /// Backend faqat to'lovi moliya tomonidan tasdiqlangan talabaga
+  /// ruxsat beradi (GET /api/contract/download). Aks holda 403 va
+  /// tushunarli xabar qaytaradi.
+  ///
+  /// Fayl desktopda Downloads papkasiga saqlanadi, mobil qurilmada
+  /// ulashish oynasi ochiladi.
+  Future<void> _shartnomaniYuklash(BuildContext context) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Shartnoma tayyorlanmoqda...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      final token = await ApiService.getToken();
+
+      final javob = await http.get(
+        Uri.parse('${ApiService.baseUrl}/contract/download'),
+        headers: {
+          'Accept': '*/*',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (!context.mounted) return;
+
+      if (javob.statusCode != 200) {
+        // Backend JSON xato qaytaradi: ruxsat yo'q yoki shartnoma
+        // fayli hali serverga yuklanmagan.
+        String xabar = "Shartnomani yuklab bo'lmadi.";
+        try {
+          final tana = jsonDecode(javob.body);
+          if (tana is Map && tana['message'] != null) {
+            xabar = tana['message'].toString();
+          }
+        } catch (_) {}
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(xabar),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        return;
+      }
+
+      final yol = await downloadExcelBytes(
+        javob.bodyBytes,
+        'Yotoqxona_Shartnomasi.doc',
+      );
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            yol.isEmpty ? 'Shartnoma yuklab olindi' : 'Saqlandi: $yol',
+          ),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Xatolik: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildEmpty(BuildContext context) {
@@ -616,7 +728,7 @@ class _YotoqxonaTab extends StatelessWidget {
             _InfoRow(
               icon: Icons.door_front_door_outlined,
               label: 'Xona raqami',
-              value: 'в„– ${room.roomNumber}',
+              value: '${room.roomNumber}',
             ),
             _InfoRow(
               icon: Icons.layers_outlined,
@@ -1721,15 +1833,20 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     final course = _selectedCourse;
 
     try {
-      await FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .doc(widget.user.id)
-          .update({
-        'fullName': fullName,
-        'phoneNumber': phone,
-        'studentId': studentId.isEmpty ? null : studentId,
+      // Talaba o'z profilini PUT /api/me orqali yangilaydi.
+      //
+      // PUT /api/students/{id} bu yerda ishlamaydi - u faqat
+      // mudir/admin uchun ochiq. /api/me esa faqat o'z yozuvini va
+      // faqat xavfsiz maydonlarni o'zgartiradi (rol, bino va hisob
+      // holati server tomonda himoyalangan).
+      await ApiService().put('me', body: {
+        'full_name': fullName,
+        'phone': phone,
         'faculty': faculty,
-        'course': course,
+        // Backend kursni butun son sifatida kutadi.
+        if (course != null && course.isNotEmpty)
+          'course': int.tryParse(course.replaceAll(RegExp(r'[^0-9]'), '')),
+        if (studentId.isNotEmpty) 'group_name': studentId,
       });
 
       final updated = widget.user.copyWith(
