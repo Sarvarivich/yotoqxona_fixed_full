@@ -348,7 +348,8 @@ class ExcelExportService {
 
   /// Barcha rollardagi foydalanuvchilarni qisqa ko'rinishda eksport
   /// qiladi: F.I.O, email, telefon, rol, yotoqxona, xona.
-  static Future<void> exportAllUsersToExcel() async {
+  /// Qaytaradi: saqlangan fayl yo'li (desktopda) yoki bo'sh satr.
+  static Future<String> exportAllUsersToExcel() async {
     try {
       final xom = await _barchaFoydalanuvchilar();
 
@@ -410,19 +411,21 @@ class ExcelExportService {
       }
 
       final fileBytes = excel.save();
-      if (fileBytes != null) {
-        await downloadExcelBytes(
-          fileBytes,
-          'Yotoqxona_Foydalanuvchilar_Ruyxati.xlsx',
-        );
+      if (fileBytes == null) {
+        throw Exception('Excel faylni yaratib bo\'lmadi.');
       }
+
+      return await downloadExcelBytes(
+        fileBytes,
+        'Yotoqxona_Foydalanuvchilar_Ruyxati.xlsx',
+      );
     } catch (e) {
       rethrow;
     }
   }
 
   @Deprecated('Buning o\'rniga exportAllUsersToExcel() dan foydalaning')
-  static Future<void> exportTalabalarToExcel() => exportAllUsersToExcel();
+  static Future<String> exportTalabalarToExcel() => exportAllUsersToExcel();
 
   // ===================================================================
   // 2-EKSPORT: TALABALAR (to'liq)
@@ -501,7 +504,8 @@ class ExcelExportService {
   /// Ilgari ikki manbadan yig'ilardi ("foydalanuvchilar" va
   /// "girls_students"). Laravel'da hammasi bitta jadvalda, qizlar
   /// hostel = 'girls' bilan farqlanadi.
-  static Future<void> exportBoysStudentsToExcel() async {
+  /// Qaytaradi: saqlangan fayl yo'li (desktopda) yoki bo'sh satr.
+  static Future<String> exportBoysStudentsToExcel() async {
     try {
       // detailed=1 — JSHSHIR, pasport, tug'ilgan sana, imtiyozlar
       // uchun to'liq ma'lumot kerak.
@@ -580,12 +584,14 @@ class ExcelExportService {
       }
 
       final fileBytes = excel.save();
-      if (fileBytes != null) {
-        await downloadExcelBytes(
-          fileBytes,
-          "Yotoqxona_Talabalar_Ruyxati.xlsx",
-        );
+      if (fileBytes == null) {
+        throw Exception('Excel faylni yaratib bo\'lmadi.');
       }
+
+      return await downloadExcelBytes(
+        fileBytes,
+        "Yotoqxona_Talabalar_Ruyxati.xlsx",
+      );
     } catch (e) {
       rethrow;
     }

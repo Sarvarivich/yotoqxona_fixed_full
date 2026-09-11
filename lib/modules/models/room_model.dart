@@ -101,6 +101,39 @@ class RoomModel {
     };
   }
 
+  /// Xonaning binosini ('boys' / 'girls') aniqlaydi.
+  ///
+  /// Laravel hostel maydonida bog'langan obyekt qaytaradi:
+  ///   "hostel": { "id": "...", "code": "boys", "name": "1-bino ..." }
+  /// Eski Firestore esa oddiy matn yozardi: "hostel": "boys".
+  ///
+  /// Ikkala holatni ham qo'llab-quvvatlaymiz. Hech biri bo'lmasa
+  /// hostel_type dan olamiz (u ham 'boys'/'girls' bo'lishi mumkin).
+  static String _hostelCode(Map<String, dynamic> json) {
+    final xom = json['hostel'];
+
+    if (xom is Map) {
+      final kod = (xom['code'] ?? '').toString().trim().toLowerCase();
+      if (kod.isNotEmpty) return kod;
+
+      // code bo'lmasa nomidan aniqlaymiz
+      final nom = (xom['name'] ?? '').toString().toLowerCase();
+      if (nom.contains('qiz')) return 'girls';
+      if (nom.isNotEmpty) return 'boys';
+    }
+
+    if (xom is String) {
+      final kod = xom.trim().toLowerCase();
+      if (kod == 'boys' || kod == 'girls') return kod;
+    }
+
+    final turi =
+        (json['hostel_type'] ?? json['hostelType'] ?? '').toString().trim().toLowerCase();
+    if (turi == 'girls') return 'girls';
+
+    return 'boys';
+  }
+
   factory RoomModel.fromJson(Map<String, dynamic> json) {
     return RoomModel(
       id: _stringValue(
@@ -133,10 +166,7 @@ class RoomModel {
         json['status']?.toString(),
       ),
 
-      hostel: _stringValue(
-        json['hostel'],
-        fallback: 'boys',
-      ),
+      hostel: _hostelCode(json),
 
       hostelType: _normalizeHostelType(
         json['hostel_type'] ??

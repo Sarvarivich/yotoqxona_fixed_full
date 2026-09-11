@@ -97,7 +97,10 @@ class _MudirScreenState extends State<MudirScreen> {
 
   void _logout() async {
     try {
-      await FirebaseAuth.instance.signOut();
+      // AuthService.logout() ichida ham Laravel, ham Firebase seansi
+      // yopiladi va Firebase xatosi yutiladi. Uni bu yerda alohida
+      // chaqirish Windows kabi Firebase sozlanmagan platformalarda
+      // chiqishni butunlay to'xtatib qo'yardi.
       await AuthService.logout();
 
       if (mounted) {

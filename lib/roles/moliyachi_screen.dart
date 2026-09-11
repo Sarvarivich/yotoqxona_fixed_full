@@ -10,7 +10,7 @@ import '../modules/hisobot/budjet_xarajatlari.dart';
 import '../modules/hisobot/qarzdorlar_royxati.dart';
 import '../modules/services/auth_service.dart';
 
-// ─── Moliyachi (Moliya bo'limi) profili ─────────────────────────────
+// в”Ђв”Ђв”Ђ Moliyachi (Moliya bo'limi) profili в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 // Bu profil talabalarning to'lov cheklari bo'yicha murojaatlarini
 // tasdiqlaydi/rad etadi, to'lov tarixini, byudjet va xarajatlar
 // hisobotini hamda qarzdorlar ro'yxatini boshqaradi.
@@ -79,7 +79,10 @@ class _MoliyachiScreenState extends State<MoliyachiScreen> {
 
   void _logout() async {
     try {
-      await FirebaseAuth.instance.signOut();
+      // FirebaseAuth.signOut() olib tashlandi: Firebase sozlanmagan
+      // platformada (Windows) u xato tashlab, chiqishni to'xtatib
+      // qo'yardi. AuthService.logout() ichida ikkala seans ham
+      // yopiladi va Firebase xatosi yutiladi.
       await AuthService.logout();
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
@@ -224,7 +227,7 @@ class _MoliyachiScreenState extends State<MoliyachiScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             child: Text(
-              "Yotoqxona · Versiya 1.0.0",
+              "Yotoqxona В· Versiya 1.0.0",
               style: TextStyle(color: _C.muted, fontSize: 11),
             ),
           ),
@@ -344,7 +347,7 @@ class _NavItem {
   const _NavItem(this.label, this.activeIcon, this.icon, this.color);
 }
 
-// ─── Creative AppBar ─────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Creative AppBar в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 class _CreativeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final VoidCallback onMenuTap;

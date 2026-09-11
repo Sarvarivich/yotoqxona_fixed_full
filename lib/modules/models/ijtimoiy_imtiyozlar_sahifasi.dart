@@ -1,9 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../auth/register.dart' show kBenefitTypes;
 import '../models/user_model.dart';
+import '../services/api_service.dart';
 
 // ─── Creative dark palette — roles/admin_screen.dart va
 // girls/theme/girls_theme.dart bilan BIR XIL rang tili ───
@@ -78,11 +78,72 @@ class _IjtimoiyImtiyozlarSahifasiState
     '6': _C.mint,
   };
 
+  // Ma'lumot Laravel API'dan bir marta yuklanadi.
+  //
+  // MUHIM: Future initState'da bir marta yaratiladi. Agar u build()
+  // ichida yaratilsa, har bir setState (qidiruvga yozilgan har bir
+  // harf) yangi so'rov yuborardi va ro'yxat "yuklanmoqda" holatiga
+  // qaytib, klaviatura fokusi yo'qolardi.
+  late Future<List<UserModel>> _imtiyozliTalabalar;
+
   @override
   void initState() {
     super.initState();
     final forced = (widget.initialHostel ?? '').trim().toLowerCase();
     _selectedHostel = forced.isNotEmpty ? forced : 'boys';
+    _imtiyozliTalabalar = _yukla();
+  }
+
+  /// Ijtimoiy imtiyozga ega talabalarni yuklaydi.
+  ///
+  /// Laravel'da alohida "hasSocialBenefit" ustuni yo'q - imtiyoz
+  /// ma'lumoti additional_data (JSON) ichida saqlanadi. Shuning uchun
+  /// barcha talabalarni olib, mijoz tomonida filtrlaymiz.
+  ///
+  /// detailed=1 kerak, chunki additional_data faqat to'liq javobda
+  /// keladi - oddiy ro'yxatda shaxsiy maydonlar berilmaydi.
+  Future<List<UserModel>> _yukla() async {
+    final api = ApiService();
+    final hammasi = <UserModel>[];
+
+    int sahifa = 1;
+    int oxirgi = 1;
+
+    do {
+      final javob = await api.get(
+        'students?role=talaba&per_page=100&detailed=1&page=$sahifa',
+      );
+
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final e in royxat) {
+          if (e is! Map) continue;
+          final d = Map<String, dynamic>.from(e);
+
+          final qoshimcha = d['additional_data'] ?? d['additionalData'];
+          final imtiyoz = qoshimcha is Map ? qoshimcha : const {};
+
+          final bor = imtiyoz['hasSocialBenefit'] == true ||
+              imtiyoz['has_social_benefit'] == true;
+          if (bor) hammasi.add(UserModel.fromJson(d));
+        }
+      }
+
+      final meta = javob['meta'];
+      oxirgi = meta is Map
+          ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+          : sahifa;
+      sahifa++;
+    } while (sahifa <= oxirgi && sahifa <= 100);
+
+    return hammasi;
+  }
+
+  Future<void> _qaytaYukla() async {
+    setState(() {
+      _imtiyozliTalabalar = _yukla();
+    });
+    await _imtiyozliTalabalar;
   }
 
   @override
@@ -119,18 +180,32 @@ class _IjtimoiyImtiyozlarSahifasiState
   Widget build(BuildContext context) {
     return Container(
       color: _C.bgBase,
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('foydalanuvchilar')
-            .where('hasSocialBenefit', isEqualTo: true)
-            .snapshots(),
+      child: FutureBuilder<List<UserModel>>(
+        future: _imtiyozliTalabalar,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
-              child: Text(
-                "Ma'lumotlarni yuklashda xatolik: ${snapshot.error}",
-                style: const TextStyle(color: _C.soft),
-                textAlign: TextAlign.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      "Ma'lumotlarni yuklashda xatolik: ${snapshot.error}",
+                      style: const TextStyle(color: _C.soft),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _qaytaYukla,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Qayta urinish'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _C.purple,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
               ),
             );
           }
@@ -140,12 +215,7 @@ class _IjtimoiyImtiyozlarSahifasiState
             );
           }
 
-          final allUsers = snapshot.data!.docs.map((doc) {
-            final data =
-                Map<String, dynamic>.from(doc.data() as Map<String, dynamic>);
-            data['id'] = doc.id;
-            return UserModel.fromJson(data);
-          }).toList();
+          final allUsers = snapshot.data!;
 
           final boysCount =
               allUsers.where((u) => (u.hostel ?? 'boys') != 'girls').length;

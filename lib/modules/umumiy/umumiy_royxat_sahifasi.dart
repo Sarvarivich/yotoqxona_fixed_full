@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/uzbekistan_region.dart';
+import '../services/api_service.dart';
 
-// ─── Creative LIGHT palette (talabalar ro'yxati bilan bir xil til) ───
+// в”Ђв”Ђв”Ђ Creative LIGHT palette (talabalar ro'yxati bilan bir xil til) в”Ђв”Ђв”Ђ
 class _C {
   static const bg = Color(0xFFF3F1FB);
   static const card = Colors.white;
@@ -18,12 +18,12 @@ class _C {
   static const faint = Color(0xFFE9E5FA);
 }
 
-/// 🌍 "Umumiy ro'yxat" — O'g'il va qiz bolalar yotoqxonalaridagi BARCHA
-/// talabalarni bitta jadvalda, qidiruv va Viloyat bo'yicha filtr bilan
-/// ko'rsatadigan admin bo'limi. `foydalanuvchilar` to'plamidan role=='talaba'
-/// bo'lgan hujjatlarni (hostel maydonidan qat'i nazar) o'qiydi, shu bilan
-/// birga xona holatini ko'rsatish uchun umumiy `xonalar` to'plamini ham
-/// bitta marta o'qib, studentId -> xona xaritasini tuzadi.
+/// "Umumiy ro'yxat" вЂ” O'g'il va qiz bolalar yotoqxonalaridagi BARCHA
+/// talabalarni bitta jadvalda, qidiruv va viloyat bo'yicha filtr bilan
+/// ko'rsatadigan admin bo'limi.
+///
+/// Ma'lumot Laravel API'dan olinadi: talabalar (role=talaba), xonalar
+/// va har bir talabaning joriy xona biriktirishi.
 class UmumiyRoyxatSahifasi extends StatefulWidget {
   const UmumiyRoyxatSahifasi({super.key});
 
@@ -32,26 +32,95 @@ class UmumiyRoyxatSahifasi extends StatefulWidget {
 }
 
 class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
-  final _firestore = FirebaseFirestore.instance;
+  final _api = ApiService();
   final _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedRegion = 'Barchasi';
   String _selectedHostel = 'Barchasi'; // Barchasi | boys | girls
 
-  // ⚠️ Muhim: bu oqimlar (Stream) shu yerda — build() DAN TASHQARIDA —
-  // faqat BIR MARTA yaratiladi. Agar `.snapshots()` build() ichida
-  // chaqirilsa, har bir setState (masalan qidiruvga har bir harf
-  // yozilganda) yangi Stream obyekti hosil qilib, StreamBuilder buni
-  // "boshqa oqim" deb hisoblab, bir lahzaga "yuklanmoqda" holatiga
-  // o'tardi — bu esa butun pastki daraxtni (qidiruv maydoni bilan
-  // birga) qayta qurib, klaviatura fokusini yo'qotardi (har bir harfdan
-  // keyin qidiruv maydonini qayta bosish kerak bo'lgan bug shundan edi).
-  late final Stream<QuerySnapshot> _roomsStream =
-      _firestore.collection('xonalar').snapshots();
-  late final Stream<QuerySnapshot> _studentsStream = _firestore
-      .collection('foydalanuvchilar')
-      .where('role', isEqualTo: 'talaba')
-      .snapshots();
+  // Ma'lumot Laravel API'dan bir marta yuklanadi va saqlanadi.
+  //
+  // MUHIM: Future initState'da bir marta yaratiladi. Agar u build()
+  // ichida yaratilsa, har bir setState (qidiruvga yozilgan har bir
+  // harf) yangi so'rov yuborardi va ro'yxat "yuklanmoqda" holatiga
+  // qaytib, klaviatura fokusi yo'qolardi.
+  late Future<_UmumiyMalumot> _malumot;
+
+  @override
+  void initState() {
+    super.initState();
+    _malumot = _yukla();
+  }
+
+  /// Talabalar, xonalar va xona biriktirishlarini birga yuklaydi.
+  Future<_UmumiyMalumot> _yukla() async {
+    // 1. Barcha talabalar (sahifama-sahifa).
+    final talabalar = <Map<String, dynamic>>[];
+    int sahifa = 1;
+    int oxirgi = 1;
+    do {
+      final javob = await _api.get(
+        'students?role=talaba&per_page=100&detailed=1&page=$sahifa',
+      );
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final e in royxat) {
+          if (e is Map) talabalar.add(Map<String, dynamic>.from(e));
+        }
+      }
+      final meta = javob['meta'];
+      oxirgi = meta is Map
+          ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+          : sahifa;
+      sahifa++;
+    } while (sahifa <= oxirgi && sahifa <= 100);
+
+    // 2. Xonalar.
+    final xonalar = <Map<String, dynamic>>[];
+    try {
+      for (final x in await _api.getRooms()) {
+        if (x is Map) xonalar.add(Map<String, dynamic>.from(x));
+      }
+    } catch (_) {
+      // Xonalar yuklanmasa ro'yxat baribir ko'rinadi вЂ”
+      // faqat xona ustuni "Biriktirilmagan" bo'ladi.
+    }
+
+    // 3. Xona biriktirishlari: studentId -> xona.
+    final yorliq = <String, String>{};
+    final xonaIdlari = <String, String>{};
+
+    for (final t in talabalar) {
+      final b = t['active_room_assignment'] ?? t['activeRoomAssignment'];
+      if (b is! Map) continue;
+      final sid = t['id']?.toString();
+      if (sid == null) continue;
+      final xona = b['room'];
+      if (xona is Map) {
+        final raqam = xona['room_number'] ?? xona['roomNumber'] ?? '-';
+        final qavat = xona['floor'] ?? '-';
+        final h = (t['hostel'] ?? 'boys').toString().toLowerCase();
+        yorliq[sid] =
+            "$raqam-xona ($qavat-qavat${h == 'girls' ? ', Q' : ', O'})";
+        final rid = xona['id'] ?? b['room_id'];
+        if (rid != null) xonaIdlari[sid] = rid.toString();
+      }
+    }
+
+    return _UmumiyMalumot(
+      talabalar: talabalar,
+      xonalar: xonalar,
+      xonaYorligi: yorliq,
+      xonaIdlari: xonaIdlari,
+    );
+  }
+
+  Future<void> _qaytaYukla() async {
+    setState(() {
+      _malumot = _yukla();
+    });
+    await _malumot;
+  }
 
   @override
   void dispose() {
@@ -60,116 +129,113 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
   }
 
   String _roomLabel(Map<String, dynamic> data, Map<String, String> roomMap) {
-    final id = data['id'] as String;
+    final id = data['id']?.toString();
+    if (id == null) return "Biriktirilmagan";
     return roomMap[id] ?? "Biriktirilmagan";
   }
+
+  /// Ism: Laravel `full_name`, eski Firestore `fullName`.
+  String _ism(Map<String, dynamic> d) =>
+      (d['full_name'] ?? d['fullName'] ?? '-').toString();
+
+  /// Telefon: Laravel `phone`, eski Firestore `phoneNumber`.
+  String _telefon(Map<String, dynamic> d) =>
+      (d['phone'] ?? d['phoneNumber'] ?? '-').toString();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _C.bg,
       body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          // Umumiy xonalar to'plami — studentId -> xona xaritasini tuzish uchun.
-          stream: _roomsStream,
-          builder: (context, roomsSnap) {
-            final roomMap = <String, String>{};
-            if (roomsSnap.hasData) {
-              for (final doc in roomsSnap.data!.docs) {
-                final data = doc.data() as Map<String, dynamic>;
-                final roomNumber = data['roomNumber']?.toString() ?? '-';
-                final floor = data['floor']?.toString() ?? '-';
-                final hostel =
-                    (data['hostel'] ?? 'boys').toString().toLowerCase();
-                final label = "$roomNumber-xona ($floor-qavat"
-                    "${hostel == 'girls' ? ', Q' : ', O'})";
-                final studentIds =
-                    List<String>.from(data['studentIds'] ?? const []);
-                for (final sid in studentIds) {
-                  roomMap[sid] = label;
-                }
-              }
-            }
-
-            return StreamBuilder<QuerySnapshot>(
-              stream: _studentsStream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: _C.purple),
-                  );
-                }
-
-                final allDocs = snapshot.data?.docs ?? [];
-                final allData = allDocs.map((d) {
-                  final m = Map<String, dynamic>.from(
-                      d.data() as Map<String, dynamic>);
-                  m['id'] = d.id;
-                  return m;
-                }).toList();
-
-                // ── Filtrlash: yotoqxona turi, viloyat, qidiruv ──
-                var filtered = allData.where((d) {
-                  final hostel =
-                      (d['hostel'] ?? 'boys').toString().toLowerCase();
-                  if (_selectedHostel != 'Barchasi' &&
-                      hostel != _selectedHostel) {
-                    return false;
-                  }
-                  final region = (d['region'] ?? '').toString();
-                  if (_selectedRegion != 'Barchasi' &&
-                      region != _selectedRegion) {
-                    return false;
-                  }
-                  if (_searchQuery.isNotEmpty) {
-                    final q = _searchQuery.toLowerCase();
-                    final fullName =
-                        (d['fullName'] ?? '').toString().toLowerCase();
-                    final phone =
-                        (d['phoneNumber'] ?? '').toString().toLowerCase();
-                    final jshshir =
-                        (d['jshshir'] ?? '').toString().toLowerCase();
-                    if (!fullName.contains(q) &&
-                        !phone.contains(q) &&
-                        !jshshir.contains(q)) {
-                      return false;
-                    }
-                  }
-                  return true;
-                }).toList();
-
-                filtered.sort((a, b) => (a['fullName'] ?? '')
-                    .toString()
-                    .compareTo((b['fullName'] ?? '').toString()));
-
-                final totalBoys = allData
-                    .where((d) =>
-                        (d['hostel'] ?? 'boys').toString().toLowerCase() ==
-                        'boys')
-                    .length;
-                final totalGirls = allData
-                    .where((d) =>
-                        (d['hostel'] ?? 'boys').toString().toLowerCase() ==
-                        'girls')
-                    .length;
-
-                return Column(
+        child: FutureBuilder<_UmumiyMalumot>(
+          future: _malumot,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildHeader(allData.length, totalBoys, totalGirls),
-                    _buildFilters(),
-                    Expanded(
-                      child: filtered.isEmpty
-                          ? _buildEmptyState()
-                          // 🎨 Endi ekran qanchalik katta bo'lishidan
-                          // qat'i nazar, bir xil kartochka dizayni
-                          // ishlatiladi — jadval shakli olib tashlandi.
-                          // Keng ekranda kartochkalar bir nechta ustunga
-                          // moslashib joylashadi (responsive grid).
-                          : _buildCardList(filtered, roomMap),
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        "Ma'lumotlarni yuklashda xatolik:\n${snapshot.error}",
+                        style: const TextStyle(color: _C.muted),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _qaytaYukla,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Qayta urinish'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _C.purple,
+                        foregroundColor: Colors.white,
+                      ),
                     ),
                   ],
-                );
-              },
+                ),
+              );
+            }
+
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(color: _C.purple),
+              );
+            }
+
+            final malumot = snapshot.data;
+            final roomMap = malumot?.xonaYorligi ?? const <String, String>{};
+            final allData =
+                malumot?.talabalar ?? const <Map<String, dynamic>>[];
+
+            // в”Ђв”Ђ Filtrlash: yotoqxona turi, viloyat, qidiruv в”Ђв”Ђ
+            final filtered = allData.where((d) {
+              final hostel = (d['hostel'] ?? 'boys').toString().toLowerCase();
+              if (_selectedHostel != 'Barchasi' && hostel != _selectedHostel) {
+                return false;
+              }
+              final region = (d['region'] ?? '').toString();
+              if (_selectedRegion != 'Barchasi' && region != _selectedRegion) {
+                return false;
+              }
+              if (_searchQuery.isNotEmpty) {
+                final q = _searchQuery.toLowerCase();
+                final fullName = _ism(d).toLowerCase();
+                final phone = _telefon(d).toLowerCase();
+                final jshshir = (d['jshshir'] ?? '').toString().toLowerCase();
+                if (!fullName.contains(q) &&
+                    !phone.contains(q) &&
+                    !jshshir.contains(q)) {
+                  return false;
+                }
+              }
+              return true;
+            }).toList()
+              ..sort((a, b) => _ism(a).compareTo(_ism(b)));
+
+            final totalBoys = allData
+                .where((d) =>
+                    (d['hostel'] ?? 'boys').toString().toLowerCase() == 'boys')
+                .length;
+            final totalGirls = allData
+                .where((d) =>
+                    (d['hostel'] ?? 'boys').toString().toLowerCase() == 'girls')
+                .length;
+
+            return Column(
+              children: [
+                _buildHeader(allData.length, totalBoys, totalGirls),
+                _buildFilters(),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? _buildEmptyState()
+                      // Ekran qanchalik katta bo'lishidan qat'i nazar,
+                      // bir xil kartochka dizayni ishlatiladi. Keng
+                      // ekranda kartochkalar bir nechta ustunga
+                      // moslashib joylashadi (responsive grid).
+                      : _buildCardList(filtered, roomMap),
+                ),
+              ],
             );
           },
         ),
@@ -226,9 +292,9 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
             ],
           );
 
-          // 📱 Tor ekranda statistik chiplar sarlavha bilan bitta qatorga
-          // sig'may, o'ng chetdan kesilib qolardi ("Qiz" chipi kabi) — endi
-          // ular sarlavha ostiga tushadi.
+          // Tor ekranda statistik chiplar sarlavha bilan bitta qatorga
+          // sig'may, o'ng chetdan kesilib qolardi вЂ” endi ular sarlavha
+          // ostiga tushadi.
           if (constraints.maxWidth < 520) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -279,7 +345,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // 📱 Qidiruv maydoni qat'iy 280px edi — juda tor ekranda bu
+          // Qidiruv maydoni qat'iy 280px edi вЂ” juda tor ekranda bu
           // o'zi ham chetdan chiqib ketardi. Endi mavjud kenglikdan
           // oshmaydi.
           final searchWidth =
@@ -409,17 +475,16 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
     );
   }
 
-  // 📱 Tor ekranlar uchun: har bir talaba — o'z ichida barcha ma'lumot
-  // (FIO, telefon, JSHSHIR, fakultet/kurs, viloyat, yotoqxona, xona
-  // holati) joylashgan alohida kartochka. Gorizontal skroll shart emas —
-  // hammasi bir marta ko'rinadi.
+  // Har bir talaba вЂ” o'z ichida barcha ma'lumot (FIO, telefon, JSHSHIR,
+  // fakultet/kurs, viloyat, yotoqxona, xona holati) joylashgan alohida
+  // kartochka. Gorizontal skroll shart emas.
   Widget _buildCardList(
       List<Map<String, dynamic>> rows, Map<String, String> roomMap) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 🎨 Keng ekranda kartochkalar bitta ustunga cho'zilib
-        // ketmasligi uchun, mavjud kenglikka qarab necha ustun
-        // sig'ishini hisoblaymiz (har biri kamida ~340px).
+        // Keng ekranda kartochkalar bitta ustunga cho'zilib ketmasligi
+        // uchun, mavjud kenglikka qarab necha ustun sig'ishini
+        // hisoblaymiz (har biri kamida ~360px).
         const spacing = 14.0;
         final columns = (constraints.maxWidth / 360).floor().clamp(1, 4);
         final itemWidth =
@@ -435,7 +500,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
               final hostelColor = hostel == 'girls' ? _C.pink : _C.teal;
               final roomLabel = _roomLabel(d, roomMap);
               final hasRoom = roomLabel != 'Biriktirilmagan';
-              final fullName = (d['fullName'] ?? '-').toString();
+              final fullName = _ism(d);
               final initial =
                   fullName.isNotEmpty ? fullName[0].toUpperCase() : '?';
 
@@ -506,17 +571,6 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                               ],
                             ),
                           ),
-                          IconButton(
-                            tooltip: 'Xonaga biriktirish',
-                            icon: const Icon(Icons.add_home_work_rounded,
-                                color: _C.purple, size: 22),
-                            onPressed: () => _showRoomPickerDialog(
-                              context,
-                              fullName: fullName,
-                              studentDocId: d['id'] as String,
-                              hostel: hostel,
-                            ),
-                          ),
                         ],
                       ),
                       const Divider(height: 20, color: _C.faint),
@@ -524,8 +578,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                         spacing: 14,
                         runSpacing: 8,
                         children: [
-                          _infoChip(Icons.call_rounded,
-                              (d['phoneNumber'] ?? '-').toString()),
+                          _infoChip(Icons.call_rounded, _telefon(d)),
                           _infoChip(Icons.badge_outlined,
                               (d['jshshir'] ?? '-').toString()),
                           _infoChip(Icons.school_outlined,
@@ -589,33 +642,60 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
     );
   }
 
-  // 🏠 Xona tanlash oynasi — talabaning o'z yotoqxonasidagi (boys/girls)
+  // Xona tanlash oynasi вЂ” talabaning o'z yotoqxonasidagi (boys/girls)
   // barcha xonalarini ko'rsatadi va tanlangan xonaga darhol biriktiradi.
-  // `hostel` bo'yicha qat'iy Firestore so'rovi ishlatilmaydi — ba'zi eski
-  // xona hujjatlarida bu maydon yo'q/bo'sh bo'lishi mumkin, shu sabab
-  // barcha xonalar o'qib, mijoz tomonida normalizatsiya qilinadi.
   Future<void> _showRoomPickerDialog(
     BuildContext context, {
     required String fullName,
     required String studentDocId,
     required String hostel,
   }) async {
-    final roomsSnap = await _firestore.collection('xonalar').get();
-    final rooms = roomsSnap.docs.where((d) {
-      final data = d.data();
-      final rawHostel = (data['hostel'] ?? '').toString().trim().toLowerCase();
-      final roomHostel = rawHostel.isEmpty ? 'boys' : rawHostel;
+    // Xonalar Laravel API'dan olinadi. Bino (hostel) ma'lumoti
+    // xonaning o'zida yoki bog'langan hostel obyektida bo'lishi
+    // mumkin вЂ” ikkalasini ham tekshiramiz.
+    final barchaXonalar = <Map<String, dynamic>>[];
+    try {
+      for (final x in await _api.getRooms()) {
+        if (x is Map) barchaXonalar.add(Map<String, dynamic>.from(x));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Xonalarni yuklashda xatolik: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final rooms = barchaXonalar.where((data) {
+      var xom = '';
+      final h = data['hostel'];
+      if (h is Map) {
+        // Bog'langan obyekt вЂ” nomidan aniqlaymiz
+        final nom = (h['name'] ?? '').toString().toLowerCase();
+        xom = nom.contains('qiz') ? 'girls' : 'boys';
+      } else {
+        xom = (h ?? '').toString().trim().toLowerCase();
+      }
+      final roomHostel = xom.isEmpty ? 'boys' : xom;
       return roomHostel == hostel;
     }).toList()
       ..sort((a, b) {
-        final an = ((a.data())['roomNumber'] as num?)
-                ?.toInt() ??
+        final an = int.tryParse(
+                (a['room_number'] ?? a['roomNumber'] ?? '0').toString()) ??
             0;
-        final bn = ((b.data())['roomNumber'] as num?)
-                ?.toInt() ??
+        final bn = int.tryParse(
+                (b['room_number'] ?? b['roomNumber'] ?? '0').toString()) ??
             0;
         return an.compareTo(bn);
       });
+
+    // Talaba hozir qaysi xonada ekanini bilamiz вЂ” o'sha xona
+    // "band" deb belgilanmasin.
+    final hozirgiXonaId = (await _malumot).xonaIdlari[studentDocId];
 
     if (!context.mounted) return;
 
@@ -665,7 +745,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            "$fullName — qaysi xonaga biriktirilsin?",
+                            "$fullName вЂ” qaysi xonaga biriktirilsin?",
                             style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14.5,
@@ -677,22 +757,29 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                   ),
                   Expanded(
                     child: Builder(builder: (context) {
-                      // 🟢/🔴 Xonalarni 2 guruhga ajratamiz: bo'sh (joy bor
+                      // Xonalarni 2 guruhga ajratamiz: bo'sh (joy bor
                       // yoki talaba hozir shu yerda) va band (to'lgan).
-                      final available = <QueryDocumentSnapshot>[];
-                      final full = <QueryDocumentSnapshot>[];
-                      for (final roomDoc in rooms) {
-                        final data = roomDoc.data();
+                      //
+                      // Laravel'da xonada studentIds massivi yo'q вЂ”
+                      // bandlik current_occupants ustunida saqlanadi.
+                      final available = <Map<String, dynamic>>[];
+                      final full = <Map<String, dynamic>>[];
+                      for (final data in rooms) {
                         final capacity =
-                            (data['capacity'] as num?)?.toInt() ?? 0;
-                        final studentIds =
-                            List<String>.from(data['studentIds'] ?? const []);
-                        final occupants = studentIds.length;
-                        final alreadyHere = studentIds.contains(studentDocId);
+                            int.tryParse((data['capacity'] ?? 0).toString()) ??
+                                0;
+                        final occupants = int.tryParse(
+                                (data['current_occupants'] ??
+                                        data['currentOccupants'] ??
+                                        0)
+                                    .toString()) ??
+                            0;
+                        final alreadyHere = hozirgiXonaId != null &&
+                            hozirgiXonaId == (data['id'] ?? '').toString();
                         final isFull = !alreadyHere &&
                             capacity > 0 &&
                             occupants >= capacity;
-                        (isFull ? full : available).add(roomDoc);
+                        (isFull ? full : available).add(data);
                       }
 
                       return ListView(
@@ -712,6 +799,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                                   roomDoc: roomDoc,
                                   studentDocId: studentDocId,
                                   hostel: hostel,
+                                  hozirgiXonaId: hozirgiXonaId,
                                 )),
                           ],
                           if (full.isNotEmpty) ...[
@@ -727,6 +815,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                                   roomDoc: roomDoc,
                                   studentDocId: studentDocId,
                                   hostel: hostel,
+                                  hozirgiXonaId: hozirgiXonaId,
                                 )),
                           ],
                         ],
@@ -742,7 +831,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
     );
   }
 
-  // 🏷️ "Bo'sh xonalar" / "Band xonalar" bo'lim sarlavhasi.
+  // "Bo'sh xonalar" / "Band xonalar" bo'lim sarlavhasi.
   Widget _sectionHeader({
     required IconData icon,
     required Color color,
@@ -767,22 +856,26 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
     );
   }
 
-  // 🧱 Bitta xona kartochkasi (avval ListView.builder ichida edi, endi
-  // ikkita bo'lim uchun ham qayta ishlatiladi).
+  // Bitta xona kartochkasi.
   Widget _roomTile({
     required BuildContext context,
     required BuildContext sheetContext,
-    required QueryDocumentSnapshot roomDoc,
+    required Map<String, dynamic> roomDoc,
     required String studentDocId,
     required String hostel,
+    String? hozirgiXonaId,
   }) {
-    final data = roomDoc.data() as Map<String, dynamic>;
-    final roomNumber = data['roomNumber']?.toString() ?? '-';
-    final floor = data['floor']?.toString() ?? '-';
-    final capacity = (data['capacity'] as num?)?.toInt() ?? 0;
-    final studentIds = List<String>.from(data['studentIds'] ?? const []);
-    final occupants = studentIds.length;
-    final alreadyHere = studentIds.contains(studentDocId);
+    final data = roomDoc;
+    final roomNumber =
+        (data['room_number'] ?? data['roomNumber'] ?? '-').toString();
+    final floor = (data['floor'] ?? '-').toString();
+    final capacity = int.tryParse((data['capacity'] ?? 0).toString()) ?? 0;
+    final occupants = int.tryParse(
+            (data['current_occupants'] ?? data['currentOccupants'] ?? 0)
+                .toString()) ??
+        0;
+    final alreadyHere =
+        hozirgiXonaId != null && hozirgiXonaId == (data['id'] ?? '').toString();
     final isFull = !alreadyHere && capacity > 0 && occupants >= capacity;
 
     return Padding(
@@ -842,7 +935,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        "$floor-qavat · $occupants/$capacity joy",
+                        "$floor-qavat В· $occupants/$capacity joy",
                         style: TextStyle(
                           fontSize: 12,
                           color: isFull ? _C.coral : _C.muted,
@@ -879,60 +972,33 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
     );
   }
 
-  // ✅ Talabani tanlangan xonaga biriktiradi. Avval boshqa xonada bo'lsa,
-  // o'sha yerdan chiqarib olinadi. Barcha yozuvlar bitta atomik "batch"
-  // ichida yuboriladi.
+  // Talabani tanlangan xonaga biriktiradi. Avval boshqa xonada bo'lsa,
+  // o'sha yerdan chiqarib olinadi. Bularning hammasi Laravel tomonida
+  // bitta tranzaksiyada bajariladi.
   Future<void> _assignStudentToRoom({
     required BuildContext context,
     required String studentDocId,
     required String hostel,
-    required QueryDocumentSnapshot roomDoc,
+    required Map<String, dynamic> roomDoc,
   }) async {
     try {
-      final oldRoomsSnap = await _firestore
-          .collection('xonalar')
-          .where('studentIds', arrayContains: studentDocId)
-          .get();
+      final roomId = (roomDoc['id'] ?? '').toString();
+      final roomNumber =
+          (roomDoc['room_number'] ?? roomDoc['roomNumber'] ?? '').toString();
 
-      final batch = _firestore.batch();
-
-      for (final oldRoomDoc in oldRoomsSnap.docs) {
-        if (oldRoomDoc.id == roomDoc.id) continue; // allaqachon shu yerda
-        final oldData = oldRoomDoc.data();
-        final oldOccupants = (oldData['currentOccupants'] as num?)?.toInt() ??
-            List<String>.from(oldData['studentIds'] ?? const []).length;
-        batch.update(oldRoomDoc.reference, {
-          'studentIds': FieldValue.arrayRemove([studentDocId]),
-          'currentOccupants': (oldOccupants - 1).clamp(0, oldOccupants),
-        });
+      if (roomId.isEmpty) {
+        throw Exception('Xona ID topilmadi.');
       }
 
-      final roomData = roomDoc.data() as Map<String, dynamic>;
-      final capacity = (roomData['capacity'] as num?)?.toInt() ?? 0;
-      final currentOccupants =
-          (roomData['currentOccupants'] as num?)?.toInt() ??
-              List<String>.from(roomData['studentIds'] ?? const []).length;
-      final alreadyThere = List<String>.from(roomData['studentIds'] ?? const [])
-          .contains(studentDocId);
-      final newOccupants =
-          alreadyThere ? currentOccupants : currentOccupants + 1;
+      // Bitta so'rov: eski biriktirishni yopish, yangisini ochish va
+      // xona bandligini yangilash. Sig'im tekshiruvi ham server tomonda.
+      await _api.assignStudentToRoom(
+        studentId: studentDocId,
+        roomId: roomId,
+      );
 
-      batch.update(roomDoc.reference, {
-        'studentIds': FieldValue.arrayUnion([studentDocId]),
-        'currentOccupants': newOccupants,
-        'status': capacity > 0 && newOccupants >= capacity
-            ? 'occupied'
-            : roomData['status'],
-      });
-
-      final roomNumber = roomData['roomNumber']?.toString() ?? '';
-      batch
-          .update(_firestore.collection('foydalanuvchilar').doc(studentDocId), {
-        'roomId': roomNumber,
-        'hostel': hostel,
-      });
-
-      await batch.commit();
+      // Ro'yxatni yangilaymiz вЂ” yangi xona darhol ko'rinsin.
+      if (mounted) await _qaytaYukla();
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -953,4 +1019,31 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
       }
     }
   }
+}
+
+/// Umumiy ro'yxat ekrani uchun bir marta yuklanadigan ma'lumot to'plami.
+///
+/// Ilgari ikkita alohida Firestore oqimi (xonalar va foydalanuvchilar)
+/// ishlatilardi. Laravel'da ular alohida so'rovlar, shuning uchun
+/// natijani bitta obyektga yig'ib, bitta FutureBuilder bilan
+/// ko'rsatamiz.
+class _UmumiyMalumot {
+  /// Barcha talabalar (to'liq ma'lumot bilan).
+  final List<Map<String, dynamic>> talabalar;
+
+  /// Barcha xonalar.
+  final List<Map<String, dynamic>> xonalar;
+
+  /// studentId -> "101-xona (1-qavat, O)" ko'rinishidagi yorliq.
+  final Map<String, String> xonaYorligi;
+
+  /// studentId -> xonaning UUID'si.
+  final Map<String, String> xonaIdlari;
+
+  const _UmumiyMalumot({
+    required this.talabalar,
+    required this.xonalar,
+    required this.xonaYorligi,
+    required this.xonaIdlari,
+  });
 }

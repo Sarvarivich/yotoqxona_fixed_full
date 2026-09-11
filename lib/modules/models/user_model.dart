@@ -66,7 +66,22 @@ class UserModel {
   final String? hostel;
   final String? fcmToken;
   final String? studentId;
+
+  /// Xonaning ID'si (Laravel'da UUID).
+  ///
+  /// DIQQAT: bu foydalanuvchiga ko'rsatiladigan raqam EMAS. Ekranda
+  /// "101-xona" deb chiqarish uchun [roomNumber] dan foydalaning.
   final String? roomId;
+
+  /// Xona raqami — "101", "203" kabi. Ekranda shu ko'rsatiladi.
+  ///
+  /// Laravel javobidagi active_room_assignment.room.room_number dan
+  /// olinadi. Eski Firestore'da roomId maydonining o'zida raqam
+  /// saqlanardi, shuning uchun u ham zaxira sifatida tekshiriladi.
+  final String? roomNumber;
+
+  /// Xona qavati, agar ma'lum bo'lsa.
+  final String? roomFloor;
 
   final String? faculty;
   final String? course;
@@ -93,6 +108,8 @@ class UserModel {
     this.fcmToken,
     this.studentId,
     this.roomId,
+    this.roomNumber,
+    this.roomFloor,
     this.faculty,
     this.course,
     this.passportId,
@@ -114,7 +131,28 @@ class UserModel {
   String get phone => phoneNumber;
 
   bool get hasRoom =>
-      roomId != null && roomId!.trim().isNotEmpty;
+      (roomId != null && roomId!.trim().isNotEmpty) ||
+      (roomNumber != null && roomNumber!.trim().isNotEmpty);
+
+  /// Ekranda ko'rsatish uchun tayyor matn: "101-xona" yoki
+  /// "Tayinlanmagan".
+  String get roomLabel {
+    if (roomNumber != null && roomNumber!.trim().isNotEmpty) {
+      return '$roomNumber-xona';
+    }
+    return 'Tayinlanmagan';
+  }
+
+  /// Qavat bilan birga: "101-xona (1-qavat)".
+  String get roomLabelWithFloor {
+    if (roomNumber == null || roomNumber!.trim().isEmpty) {
+      return 'Tayinlanmagan';
+    }
+    if (roomFloor == null || roomFloor!.trim().isEmpty) {
+      return '$roomNumber-xona';
+    }
+    return '$roomNumber-xona ($roomFloor-qavat)';
+  }
 
   bool get isStudent => role == UserRole.talaba;
 
@@ -126,11 +164,9 @@ class UserModel {
 
   bool get isSuperAdmin => role == UserRole.superAdmin;
 
-  bool get isSelfRegistered =>
-      registeredBy?.toLowerCase() == 'self';
+  bool get isSelfRegistered => registeredBy?.toLowerCase() == 'self';
 
-  bool get isAddedByAdmin =>
-      registeredBy?.toLowerCase() == 'admin';
+  bool get isAddedByAdmin => registeredBy?.toLowerCase() == 'admin';
 
   // =========================
   // ARIZA
@@ -160,24 +196,20 @@ class UserModel {
     return hasRoom ? 3 : 2;
   }
 
-  String get applicationStatus =>
-      (additionalData?['applicationStatus'] ??
-              additionalData?['application_status'] ??
-              'submitted')
-          .toString();
+  String get applicationStatus => (additionalData?['applicationStatus'] ??
+          additionalData?['application_status'] ??
+          'submitted')
+      .toString();
 
-  String? get assignmentType =>
-      (additionalData?['hostelAssignmentType'] ??
-              additionalData?['hostel_assignment_type'])
-          ?.toString();
+  String? get assignmentType => (additionalData?['hostelAssignmentType'] ??
+          additionalData?['hostel_assignment_type'])
+      ?.toString();
 
-  String? get assignmentMessage =>
-      (additionalData?['assignmentMessage'] ??
-              additionalData?['assignment_message'])
-          ?.toString();
+  String? get assignmentMessage => (additionalData?['assignmentMessage'] ??
+          additionalData?['assignment_message'])
+      ?.toString();
 
-  bool get isRentalAssignment =>
-      assignmentType?.toLowerCase() == 'rental';
+  bool get isRentalAssignment => assignmentType?.toLowerCase() == 'rental';
 
   bool get hasPhysicalHostelAssignment =>
       assignmentType != null &&
@@ -257,6 +289,7 @@ class UserModel {
       'fcm_token': fcmToken,
       'student_id': studentId,
       'room_id': roomId,
+      'room_number': roomNumber,
       'faculty': faculty,
       'course': course,
       'passport_id': passportId,
@@ -310,24 +343,58 @@ class UserModel {
     }
 
     // =========================
-    // ROOM ID
+    // XONA
     // =========================
+    //
+    // Laravel javobi:
+    //   active_room_assignment: {
+    //     room_id: "uuid",
+    //     room: { id: "uuid", room_number: "101", floor: 1 }
+    //   }
+    //
+    // Eski Firestore'da esa roomId maydonida xona RAQAMI ("101")
+    // saqlanardi. Shuning uchun ikkala manbani ham tekshiramiz.
 
+    final activeAssignment =
+        parsed['active_room_assignment'] ?? parsed['activeRoomAssignment'];
+
+    final Map? assignmentRoom =
+        activeAssignment is Map ? activeAssignment['room'] as Map? : null;
+
+    // Xonaning ID'si
     String? activeRoomId = readString(
       parsed['room_id'] ?? parsed['roomId'],
     );
 
-    final activeAssignment =
-        parsed['active_room_assignment'] ??
-            parsed['activeRoomAssignment'];
-
-    if (activeRoomId == null && activeAssignment is Map) {
-      activeRoomId = readString(
+    if (activeAssignment is Map) {
+      activeRoomId ??= readString(
         activeAssignment['room_id'] ??
             activeAssignment['roomId'] ??
-            activeAssignment['room']?['id'],
+            assignmentRoom?['id'],
       );
     }
+
+    // Xona raqami
+    String? activeRoomNumber = readString(
+      assignmentRoom?['room_number'] ?? assignmentRoom?['roomNumber'],
+    );
+
+    // To'g'ridan-to'g'ri berilgan bo'lsa
+    activeRoomNumber ??= readString(
+      parsed['room_number'] ?? parsed['roomNumber'],
+    );
+
+    // Eski Firestore: roomId maydonida raqam bo'lishi mumkin.
+    // UUID'da defis bor, raqamda yo'q — shu bilan farqlaymiz.
+    if (activeRoomNumber == null &&
+        activeRoomId != null &&
+        !activeRoomId.contains('-')) {
+      activeRoomNumber = activeRoomId;
+    }
+
+    final activeRoomFloor = readString(
+      assignmentRoom?['floor'] ?? assignmentRoom?['floor_number'],
+    );
 
     // =========================
     // METADATA
@@ -361,6 +428,9 @@ class UserModel {
 
       'room_id',
       'roomId',
+
+      'room_number',
+      'roomNumber',
 
       'faculty',
       'course',
@@ -400,9 +470,7 @@ class UserModel {
           '',
 
       fullName: readString(
-            parsed['full_name'] ??
-                parsed['fullName'] ??
-                parsed['name'],
+            parsed['full_name'] ?? parsed['fullName'] ?? parsed['name'],
           ) ??
           '',
 
@@ -428,6 +496,10 @@ class UserModel {
       ),
 
       roomId: activeRoomId,
+
+      roomNumber: activeRoomNumber,
+
+      roomFloor: activeRoomFloor,
 
       faculty: readString(parsed['faculty']),
 
@@ -455,8 +527,7 @@ class UserModel {
         parsed['registered_by'] ?? parsed['registeredBy'],
       ),
 
-      additionalData:
-          metadata.isEmpty ? null : metadata,
+      additionalData: metadata.isEmpty ? null : metadata,
     );
   }
 
@@ -474,6 +545,8 @@ class UserModel {
     String? fcmToken,
     String? studentId,
     String? roomId,
+    String? roomNumber,
+    String? roomFloor,
     String? faculty,
     String? course,
     String? passportId,
@@ -495,6 +568,8 @@ class UserModel {
       fcmToken: fcmToken ?? this.fcmToken,
       studentId: studentId ?? this.studentId,
       roomId: roomId ?? this.roomId,
+      roomNumber: roomNumber ?? this.roomNumber,
+      roomFloor: roomFloor ?? this.roomFloor,
       faculty: faculty ?? this.faculty,
       course: course ?? this.course,
       passportId: passportId ?? this.passportId,

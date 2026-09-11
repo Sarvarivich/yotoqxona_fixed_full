@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
@@ -799,8 +799,8 @@ class _ProfilTab extends StatelessWidget {
                       _InfoRow(
                         icon: Icons.door_front_door_outlined,
                         label: 'Xona raqami',
-                        value: user.roomId ?? 'Tayinlanmagan',
-                        valueMuted: user.roomId == null,
+                        value: user.roomLabel,
+                        valueMuted: !user.hasRoom,
                       ),
                     ],
                   ),

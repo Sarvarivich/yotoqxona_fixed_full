@@ -79,6 +79,32 @@ class RoomController extends Controller
             ], 422);
         }
 
+        // Takroriy xona raqamini oldindan tekshiramiz.
+        //
+        // Bazada unique(['hostel_id', 'hostel_type', 'room_number'])
+        // sharti bor. Uni tekshirmasdan Room::create() chaqirsak,
+        // baza xatosi 500 bo'lib chiqadi va foydalanuvchi
+        // 'Server Error' ko'radi. Bu yerda 422 va tushunarli
+        // xabar beramiz.
+        $turi = $request->hostel_type ?? 'boys';
+
+        $mavjud = Room::where('hostel_id', $request->hostel_id)
+            ->where('hostel_type', $turi)
+            ->where('room_number', $request->room_number)
+            ->exists();
+
+        if ($mavjud) {
+            return response()->json([
+                'success' => false,
+                'message' => "Bu yotoqxonada {$request->room_number}-xona allaqachon mavjud.",
+                'errors' => [
+                    'room_number' => [
+                        "{$request->room_number}-xona allaqachon ro'yxatda bor.",
+                    ],
+                ],
+            ], 422);
+        }
+
         $room = Room::create([
             'hostel_id' => $request->hostel_id,
             'room_number' => $request->room_number,

@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -73,14 +76,24 @@ class AuthService {
   }
 
   // 1. TALABANING O'ZI RO'YXATDAN O'TISHI
+  /// Talabaning o'zi ro'yxatdan o'tishi.
+  ///
+  /// Endi to'liq Laravel API orqali: POST /api/register.
+  /// Backend bir so'rovda hammasini bajaradi вЂ” foydalanuvchi
+  /// yaratish, ijtimoiy imtiyoz hujjatlarini saqlash, ariza ochish
+  /// (2-bosqich, "ko'rib chiqilmoqda") va Sanctum tokeni berish.
+  ///
+  /// Ilgari bu metod Firebase Auth'da hisob ochib, hujjatlarni
+  /// Supabase'ga yuklab, profilni Firestore'ga yozardi. Uch qadam,
+  /// uchtasi ham alohida buzilishi mumkin edi вЂ” va Firebase
+  /// sozlanmagan platformalarda (masalan Windows) umuman ishlamasdi.
   static Future<void> registerAndLoginUser({
     required BuildContext context,
     required String fullName,
     required String email,
     required String password,
     required UserRole role,
-    required String hostel, // "boys" yoki "girls" — talaba ro'yxatdan
-    // o'tishda tanlaydi, keyin login qilganda faqat shu yotoqxonaga kiradi
+    required String hostel, // "boys" yoki "girls"
     String? phoneNumber,
     String? faculty,
     String? course,
@@ -89,12 +102,11 @@ class AuthService {
     DateTime? birthDate,
     String? region,
     String? district,
-    // 🎗️ Ijtimoiy imtiyoz — talaba ro'yxatdan o'tishda tanlagan bo'lsa
     bool hasSocialBenefit = false,
     String? benefitType, // '1'..'6'
-    String? lostParentType, // faqat benefitType == '1' uchun: 'ota'/'ona'
-    PlatformFile? deathCertificateFile, // 1-tur uchun o'lim varaqasi (PDF)
-    PlatformFile? benefitDocumentFile, // 2—6 turlar uchun ma'lumotnoma
+    String? lostParentType, // faqat benefitType == '1' uchun
+    PlatformFile? deathCertificateFile,
+    PlatformFile? benefitDocumentFile,
   }) async {
     showDialog(
       context: context,
@@ -103,161 +115,130 @@ class AuthService {
     );
 
     try {
-      final cleanEmail = email.trim().toLowerCase();
-      final cleanPassword = password.trim();
-
-      // ✅ Firebase Authentication orqali haqiqiy hisob yaratamiz.
-      final credential =
-          await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: cleanEmail,
-        password: cleanPassword,
+      // Hujjatlar bo'lgani uchun multipart so'rov yuboramiz.
+      final sorov = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiService.baseUrl}/register'),
       );
-      final uid = credential.user!.uid;
+      sorov.headers['Accept'] = 'application/json';
 
-      // 🎗️ Ijtimoiy imtiyoz hujjatlari — tanlangan bo'lsa, Supabase
-      // Storage'ga yuklaymiz (Firebase Storage emas — u to'lovli Blaze
-      // tarifini talab qiladi, Supabase esa bepul tarifda ham to'liq
-      // ishlaydi va loyihada allaqachon ulangan). MUHIM: agar yuklash
-      // muvaffaqiyatsiz tugasa ham, bu BUTUN ro'yxatdan o'tishni
-      // to'xtatib qo'ymasligi kerak — aks holda Firebase Auth hisobi
-      // allaqachon yaratilgan bo'ladi-yu, Firestore profili yozilmay
-      // qoladi va talaba tizimga kira olmay qoladi. Shu sabab xatolik
-      // faqat "warning" sifatida saqlanadi va ro'yxatdan o'tish
-      // oxirigacha davom etadi — hujjatni talaba keyinroq profilidan
-      // qayta yuklashi mumkin.
-      String? deathCertificateUrl;
-      String? benefitDocumentUrl;
-      String? documentUploadWarning;
+      void qosh(String kalit, String? qiymat) {
+        if (qiymat != null && qiymat.trim().isNotEmpty) {
+          sorov.fields[kalit] = qiymat.trim();
+        }
+      }
 
+      qosh('full_name', fullName);
+      qosh('email', email.toLowerCase());
+      qosh('password', password);
+      qosh('hostel', hostel);
+      qosh('phone', phoneNumber);
+      qosh('faculty', faculty);
+      qosh('passport_id', passportId);
+      qosh('jshshir', jshshir);
+      qosh('region', region);
+      qosh('district', district);
+
+      // Kurs butun son bo'lishi kerak: "1-kurs" -> "1"
+      if (course != null && course.isNotEmpty) {
+        final raqam = course.replaceAll(RegExp(r'[^0-9]'), '');
+        if (raqam.isNotEmpty) sorov.fields['course'] = raqam;
+      }
+
+      if (birthDate != null) {
+        sorov.fields['birth_date'] =
+            birthDate.toIso8601String().split('T').first;
+      }
+
+      if (hasSocialBenefit) {
+        sorov.fields['has_social_benefit'] = '1';
+        qosh('benefit_type', benefitType);
+        qosh('lost_parent_type', lostParentType);
+      }
+
+      // Hujjatlar. Backend ularni saqlaydi va havolasini
+      // additional_data ichiga yozadi.
       if (hasSocialBenefit &&
           benefitType == '1' &&
-          deathCertificateFile != null) {
-        if (deathCertificateFile.bytes == null) {
-          documentUploadWarning =
-              "Ro'yxatdan o'tish muvaffaqiyatli, lekin o'lim varaqasi fayli o'qilmadi. Buni profilingizdan keyinroq qayta yuklashingiz mumkin.";
-        } else {
-          try {
-            deathCertificateUrl =
-                await SupabaseStorageService.instance.uploadStudentDocument(
-              bytes: deathCertificateFile.bytes!,
-              studentId: uid,
-              fileName: deathCertificateFile.name,
-              documentType: 'death_certificate',
-            );
-          } catch (e) {
-            documentUploadWarning =
-                "Ro'yxatdan o'tish muvaffaqiyatli, lekin o'lim varaqasini yuklashda xatolik yuz berdi (${_friendlyUploadError(e)}). Buni profilingizdan keyinroq qayta yuklashingiz mumkin.";
-          }
-        }
+          deathCertificateFile?.bytes != null) {
+        sorov.files.add(http.MultipartFile.fromBytes(
+          'death_certificate',
+          deathCertificateFile!.bytes!,
+          filename: deathCertificateFile.name,
+        ));
       } else if (hasSocialBenefit &&
           benefitType != null &&
           benefitType != '1' &&
-          benefitDocumentFile != null) {
-        if (benefitDocumentFile.bytes == null) {
-          documentUploadWarning =
-              "Ro'yxatdan o'tish muvaffaqiyatli, lekin ma'lumotnoma fayli o'qilmadi. Buni profilingizdan keyinroq qayta yuklashingiz mumkin.";
-        } else {
-          try {
-            benefitDocumentUrl =
-                await SupabaseStorageService.instance.uploadStudentDocument(
-              bytes: benefitDocumentFile.bytes!,
-              studentId: uid,
-              fileName: benefitDocumentFile.name,
-              documentType: 'benefit_document_$benefitType',
-            );
-          } catch (e) {
-            documentUploadWarning =
-                "Ro'yxatdan o'tish muvaffaqiyatli, lekin ma'lumotnomani yuklashda xatolik yuz berdi (${_friendlyUploadError(e)}). Buni profilingizdan keyinroq qayta yuklashingiz mumkin.";
-          }
-        }
+          benefitDocumentFile?.bytes != null) {
+        sorov.files.add(http.MultipartFile.fromBytes(
+          'benefit_document',
+          benefitDocumentFile!.bytes!,
+          filename: benefitDocumentFile.name,
+        ));
       }
 
-      final benefitData = <String, dynamic>{
-        if (hasSocialBenefit) 'hasSocialBenefit': true,
-        if (hasSocialBenefit && benefitType != null) 'benefitType': benefitType,
-        if (lostParentType != null) 'lostParentType': lostParentType,
-        if (deathCertificateUrl != null)
-          'deathCertificateUrl': deathCertificateUrl,
-        if (benefitDocumentUrl != null)
-          'benefitDocumentUrl': benefitDocumentUrl,
+      final javob = await http.Response.fromStream(await sorov.send());
+      final tana = jsonDecode(javob.body) as Map<String, dynamic>;
 
-        // 🏠 Yotoqxona arizasi holati:
-        // 1-bosqich — ariza to'ldirilmoqda (register oynasi),
-        // yuborilgach darhol 2-bosqich — "ko'rib chiqilmoqda".
-        'applicationStep': 2,
-        'applicationStatus': 'submitted',
-      };
-
-      final newUser = UserModel(
-        id: uid,
-        fullName: fullName.trim(),
-        email: cleanEmail,
-        phoneNumber: phoneNumber?.trim() ?? "+998900000000",
-        role: role,
-        hostel: hostel,
-        faculty: faculty,
-        course: course,
-        passportId: passportId?.trim(),
-        jshshir: jshshir?.trim(),
-        birthDate: birthDate,
-        region: region,
-        district: district,
-        additionalData: benefitData.isEmpty ? null : benefitData,
-      );
-
-      // ✅ Firestore hujjat ID'si endi Auth UID bilan bir xil, va
-      // parol maydoni umuman yozilmaydi.
-      // 🕒 "createdAt" — server vaqti bilan qo'yiladi (klient soati
-      // noto'g'ri bo'lsa ham to'g'ri vaqt saqlanadi), "registeredBy" —
-      // bu yerda talaba O'ZI ro'yxatdan o'tayotgani uchun 'self'.
-      await _usersCollection.doc(uid).set({
-        ...newUser.toJson(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'registeredBy': 'self',
-        'applicationStep': 2,
-        'applicationStatus': 'submitted',
-        'applicationSubmittedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (!context.mounted) return;
-      Navigator.of(context).pop();
-
-      if (documentUploadWarning != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(documentUploadWarning),
-            backgroundColor: const Color(0xFFffb020),
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 6),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("Muvaffaqiyatli ro'yxatdan o'tdingiz!"),
-              backgroundColor: Colors.green),
-        );
+      if (javob.statusCode < 200 || javob.statusCode >= 300) {
+        throw Exception(_registerXato(tana));
       }
 
-      Navigator.of(context).pop();
-    } on FirebaseAuthException catch (e) {
+      // Token darhol saqlanadi вЂ” talaba qayta login qilmasdan
+      // tizimga kiradi.
+      final token = tana['token']?.toString();
+      if (token != null && token.isNotEmpty) {
+        await ApiService.saveToken(token);
+      }
+
       if (!context.mounted) return;
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(); // yuklanish oynasi
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(_friendlyAuthError(e)), backgroundColor: Colors.red),
+        const SnackBar(
+          content: Text("Muvaffaqiyatli ro'yxatdan o'tdingiz!"),
+          backgroundColor: Colors.green,
+        ),
       );
+
+      Navigator.of(context).pop(); // ro'yxatdan o'tish ekrani
     } catch (e) {
       if (!context.mounted) return;
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text("Xatolik yuz berdi: $e"),
-            backgroundColor: Colors.red),
+          content: Text("$e".replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 6),
+        ),
       );
     }
   }
 
+  /// Backend validatsiya xatolarini o'qish uchun qulay matnga o'giradi.
+  static String _registerXato(Map<String, dynamic> tana) {
+    final errors = tana['errors'];
+    if (errors is Map && errors.isNotEmpty) {
+      final birinchi = errors.values.first;
+      final matn = birinchi is List && birinchi.isNotEmpty
+          ? birinchi.first.toString()
+          : birinchi.toString();
+
+      final past = matn.toLowerCase();
+      if (past.contains('email') && past.contains('taken')) {
+        return "Bu email allaqachon ro'yxatdan o'tgan.";
+      }
+      if (past.contains('jshshir')) {
+        return "Bu JSHSHIR allaqachon ro'yxatdan o'tgan.";
+      }
+      if (past.contains('passport')) {
+        return "Bu pasport raqami allaqachon ro'yxatdan o'tgan.";
+      }
+      return matn;
+    }
+
+    return tana['message']?.toString() ?? "Ro'yxatdan o'tishda xatolik.";
+  }
   // 2. ADMIN/MUDIR ICHKARIDAN YANGI FOYDALANUVCHI QO'SHISHI
   //
   // ✅ Endi Laravel API orqali ishlaydi (POST /api/students).
