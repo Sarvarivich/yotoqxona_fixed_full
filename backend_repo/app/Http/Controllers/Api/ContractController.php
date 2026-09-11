@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class ContractController extends Controller
 {
@@ -53,14 +52,18 @@ class ContractController extends Controller
             ], 403);
         }
 
-        if (!Storage::disk('public')->exists(self::CONTRACT_FILE)) {
+        // Shablon ATAYLAB storage/ da emas, resources/ da saqlanadi:
+        // Railway'da storage papkasi vaqtinchalik va har deploy'da
+        // tozalanadi. resources/ esa kod bilan birga deploy bo'ladi,
+        // shuning uchun shartnoma hech qachon yo'qolmaydi.
+        $path = resource_path(self::CONTRACT_FILE);
+
+        if (!file_exists($path)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Shartnoma fayli hali tizimga yuklanmagan. Administratorga murojaat qiling.',
             ], 404);
         }
-
-        $path = Storage::disk('public')->path(self::CONTRACT_FILE);
 
         return response()->download(
             $path,
