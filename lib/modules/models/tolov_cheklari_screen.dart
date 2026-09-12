@@ -3,7 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import 'user_model.dart';
 
-// в”Ђв”Ђв”Ђ Creative LIGHT palette в”Ђв”Ђв”Ђ
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Creative LIGHT palette РІвЂќР‚РІвЂќР‚РІвЂќР‚
 class _LC {
   static const bg = Color(0xFFF3F1FB);
   static const card = Colors.white;
@@ -24,7 +24,7 @@ class TolovCheklariScreen extends StatefulWidget {
   /// qaytish tugmasi bosilganda chaqiriladigan callback.
   final VoidCallback? onBack;
 
-  /// Hozir tizimga kirgan foydalanuvchi (moliyachi/mudir/admin) вЂ”
+  /// Hozir tizimga kirgan foydalanuvchi (moliyachi/mudir/admin) РІР‚вЂќ
   /// chekni kim tasdiqlagani yoki rad etganini yozib qo'yish uchun.
   final UserModel? currentUser;
 
@@ -62,7 +62,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // вњ… Boshqa bo'limlardagi kabi, moliyachi/mudir/admin o'z yotoqxonasi
+    // РІСљвЂ¦ Boshqa bo'limlardagi kabi, moliyachi/mudir/admin o'z yotoqxonasi
     // tanlangan holda ekranni ochadi, so'ngra "O'g'il bolalar" / "Qiz
     // bolalar" tugmalari orqali ikkalasi orasida almashtirishi mumkin.
     final forced = (widget.initialHostel ?? '').trim();
@@ -93,7 +93,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
   String _str(dynamic value) => value?.toString() ?? '';
 
   String _formatDate(dynamic value, {bool withTime = false}) {
-    if (value == null) return 'вЂ”';
+    if (value == null) return 'РІР‚вЂќ';
     DateTime? dt;
     if (value is DateTime) {
       dt = value;
@@ -102,7 +102,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
     } else if (value is Map && value['date'] != null) {
       dt = DateTime.tryParse(value['date'].toString());
     }
-    if (dt == null) return _str(value).isEmpty ? 'вЂ”' : _str(value);
+    if (dt == null) return _str(value).isEmpty ? 'РІР‚вЂќ' : _str(value);
     final base =
         '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
     if (!withTime) return base;
@@ -115,7 +115,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
     final combined = '$name $raw';
     if (combined.contains('girl') ||
         combined.contains('qiz') ||
-        combined.contains('Р¶РµРЅ') ||
+        combined.contains('Р В¶Р ВµР Р…') ||
         combined.contains('ayol')) {
       return 'girls';
     }
@@ -132,8 +132,68 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
     if (raw is! List) return <Map<String, dynamic>>[];
     return raw
         .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
+        .map((e) => _tekislash(Map<String, dynamic>.from(e)))
         .toList();
+  }
+
+  /// Laravel javobidagi boglangan obyektlarni tekis maydonlarga
+  /// aylantiradi.
+  ///
+  /// Ekran student_name, room_number, payment_date kabi tekis
+  /// nomlarni oqiydi (eski Firestore shunday saqlardi). Laravel
+  /// esa boglangan obyekt qaytaradi: student: { full_name: ... }.
+  ///
+  /// Bu yerda bir marta tekislaganimiz uchun ekrandagi qolgan
+  /// kodga tegish shart emas.
+  Map<String, dynamic> _tekislash(Map<String, dynamic> d) {
+    final student = d['student'];
+    final room = d['room'];
+    final reviewer = d['reviewer'];
+    final hostelObj = d['hostel'];
+
+    String? olish(dynamic obj, String kalit) {
+      if (obj is! Map) return null;
+      final qiymat = obj[kalit];
+      if (qiymat == null) return null;
+      final matn = qiymat.toString().trim();
+      return matn.isEmpty ? null : matn;
+    }
+
+    // Talaba
+    d['student_name'] ??= olish(student, 'full_name') ??
+        olish(student, 'fullName');
+    d['student_email'] ??= olish(student, 'email');
+    d['student_phone'] ??= olish(student, 'phone');
+
+    // Xona
+    d['room_number'] ??=
+        olish(room, 'room_number') ?? olish(room, 'roomNumber');
+    d['room_floor'] ??= olish(room, 'floor');
+
+    // Sana: Laravel paid_at yozadi, ekran payment_date kutadi.
+    d['payment_date'] ??= d['paid_at'] ?? d['created_at'];
+
+    // Bino: xonaning hostel_type maydonida yoki boglangan
+    // hostel obyektining code maydonida.
+    final bino = olish(room, 'hostel_type') ?? olish(hostelObj, 'code');
+    if (bino != null) {
+      d['hostel'] = bino;
+    } else if (d['hostel'] is Map) {
+      d['hostel'] = null;
+    }
+    d['hostel_name'] ??= olish(hostelObj, 'name');
+
+    // Tasdiqlagan xodim: ilgari bu yerda UUID korinardi.
+    final reviewerName =
+        olish(reviewer, 'full_name') ?? olish(reviewer, 'fullName');
+    if (reviewerName != null) {
+      d['reviewed_by'] = reviewerName;
+    }
+
+    // Izoh
+    d['review_note'] ??= d['note'];
+
+    return d;
   }
 
   Future<void> _showApproveDialog(
@@ -328,7 +388,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
-        // вњ… Orqaga qaytish tugmasi har doim ko'rinadi (tab sifatida ham,
+        // РІСљвЂ¦ Orqaga qaytish tugmasi har doim ko'rinadi (tab sifatida ham,
         // push qilingan sahifa sifatida ham ishlatilganda)
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
@@ -366,7 +426,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
       ),
       body: Column(
         children: [
-          // рџљ» Yotoqxona turini tanlash вЂ” boshqa bo'limlardagi kabi,
+          // СЂСџС™В» Yotoqxona turini tanlash РІР‚вЂќ boshqa bo'limlardagi kabi,
           // to'lov cheklari ham "O'g'il bolalar" va "Qiz bolalar" uchun
           // alohida-alohida ko'rsatiladi.
           Padding(
@@ -428,7 +488,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
               ),
             ),
           ),
-          // рџ”Ћ Talaba ismi yoki sana bo'yicha qidiruv (admin va yotoqxona mudiri uchun)
+          // СЂСџвЂќР‹ Talaba ismi yoki sana bo'yicha qidiruv (admin va yotoqxona mudiri uchun)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
             child: Container(
@@ -614,7 +674,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
             ? _LC.coral
             : _LC.orange;
     final amount = d['amount'];
-    final amountText = amount == null ? 'вЂ”' : '$amount so\'m';
+    final amountText = amount == null ? 'РІР‚вЂќ' : '$amount so\'m';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -710,7 +770,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
                       icon: Icons.meeting_room_rounded,
                       label: 'Xona',
                       value: _str(d['room_number']).isEmpty
-                          ? 'вЂ”'
+                          ? 'РІР‚вЂќ'
                           : _str(d['room_number']))),
               const SizedBox(width: 10),
               Expanded(
@@ -718,7 +778,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
                       icon: Icons.calendar_month_rounded,
                       label: 'Davr',
                       value:
-                          _str(d['period']).isEmpty ? 'вЂ”' : _str(d['period']))),
+                          _str(d['period']).isEmpty ? 'РІР‚вЂќ' : _str(d['period']))),
             ]),
             if (_str(d['note']).isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -885,9 +945,9 @@ class _ReviewInfoBox extends StatelessWidget {
   });
 
   String get _dateStr {
-    if (reviewedAt == null) return 'вЂ”';
+    if (reviewedAt == null) return 'РІР‚вЂќ';
     final dt = DateTime.tryParse(reviewedAt.toString());
-    if (dt == null) return 'вЂ”';
+    if (dt == null) return 'РІР‚вЂќ';
     return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
   }
 
@@ -905,21 +965,21 @@ class _ReviewInfoBox extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _ReviewRow(
-            emoji: isApproved ? 'вњ…' : 'вќЊ',
+            emoji: isApproved ? 'РІСљвЂ¦' : 'РІСњРЉ',
             label: 'Holati',
             value: isApproved ? 'Tasdiqlangan' : 'Rad etilgan',
             color: color,
           ),
           const SizedBox(height: 8),
           _ReviewRow(
-            emoji: 'рџ‘¤',
+            emoji: 'СЂСџвЂВ¤',
             label: isApproved ? 'Tasdiqlagan' : 'Rad etgan',
             value: reviewedBy.isNotEmpty ? reviewedBy : 'Noma\'lum xodim',
             color: color,
           ),
           const SizedBox(height: 8),
           _ReviewRow(
-            emoji: 'рџ“…',
+            emoji: 'СЂСџвЂњвЂ¦',
             label: 'Sana',
             value: _dateStr,
             color: color,
@@ -927,7 +987,7 @@ class _ReviewInfoBox extends StatelessWidget {
           if (reviewNote.isNotEmpty) ...[
             const SizedBox(height: 8),
             _ReviewRow(
-              emoji: 'рџ’¬',
+              emoji: 'СЂСџвЂ™В¬',
               label: 'Izoh',
               value: reviewNote,
               color: color,
