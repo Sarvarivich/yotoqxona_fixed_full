@@ -183,6 +183,25 @@ class AuthController extends Controller
             $q->latest()->limit(1);
         }]);
 
+        // Talabaning joriy qarzi: eng oxirgi TASDIQLANGAN
+        // to'lovda moliyachi kiritgan qoldiq summa.
+        //
+        // Har bir to'lovdan keyin moliyachi qolgan qarzni
+        // qo'lda kiritadi, chunki umumiy summa talabaga
+        // qarab turlicha bo'lishi mumkin (imtiyoz, qisman
+        // to'lov, kelishuv va hokazo).
+        $oxirgiTolov = \App\Models\Payment::where('student_id', $user->id)
+            ->where('status', 'approved')
+            ->whereNotNull('remaining_amount')
+            ->orderByDesc('paid_at')
+            ->orderByDesc('created_at')
+            ->first();
+
+        $user->setAttribute(
+            'current_debt',
+            $oxirgiTolov?->remaining_amount
+        );
+
         return response()->json([
             'success' => true,
             'user' => $user,

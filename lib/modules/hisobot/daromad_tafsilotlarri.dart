@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/api_service.dart';
 
 // ─── Creative dark palette (dashboard.dart bilan bir xil til) ───
 class _C {
@@ -36,18 +36,41 @@ class _PaymentRecord {
     return 0.0;
   }
 
-  String get studentName =>
-      (data['studentName'] ?? "Noma'lum talaba") as String;
-  String get reviewedBy =>
-      (data['reviewedBy'] ?? data['createdBy'] ?? '') as String? ?? '';
-  String get note => (data['note'] ?? '') as String? ?? '';
-  String get receiptUrl => (data['receiptUrl'] ?? '') as String? ?? '';
+  /// Bog'langan obyektdan matn o'qish uchun yordamchi.
+  /// Laravel `student: { full_name: ... }` qaytaradi, eski Firestore
+  /// esa `studentName` deb tekis yozardi.
+  static String _ichidan(dynamic obj, String kalit) {
+    if (obj is! Map) return '';
+    return (obj[kalit] ?? '').toString().trim();
+  }
+
+  String get studentName {
+    final ism = _ichidan(data['student'], 'full_name');
+    if (ism.isNotEmpty) return ism;
+    final eski =
+        (data['studentName'] ?? data['student_name'] ?? '').toString().trim();
+    return eski.isNotEmpty ? eski : "Noma'lum talaba";
+  }
+
+  String get reviewedBy {
+    final ism = _ichidan(data['reviewer'], 'full_name');
+    if (ism.isNotEmpty) return ism;
+    // Laravel'da reviewed_by UUID bo'lgani uchun uni ko'rsatmaymiz.
+    return (data['reviewedBy'] ?? data['createdBy'] ?? '').toString().trim();
+  }
+
+  String get note => (data['note'] ?? '').toString().trim();
+
+  String get receiptUrl =>
+      (data['receipt_url'] ?? data['receiptUrl'] ?? data['receipt_path'] ?? '')
+          .toString()
+          .trim();
   String get hostelLabel =>
       hostel == 'girls' ? 'Qiz bolalar' : "O'g'il bolalar";
 }
 
 DateTime _dateOfRaw(dynamic raw) {
-  if (raw is Timestamp) return raw.toDate();
+  if (raw is DateTime) return raw;
   if (raw is String) return DateTime.tryParse(raw) ?? DateTime(2000);
   return DateTime(2000);
 }
@@ -66,18 +89,77 @@ DateTime _dateOfRaw(dynamic raw) {
 /// yozuvning to'liq cheki (rasm bilan) ochiladi va u yerda "Oldingi" /
 /// "Keyingi" tugmalari orqali ro'yxatdagi BOSHQA (ham o'g'il, ham qiz
 /// bolalar) tasdiqlangan cheklariga ham sirg'alib o'tish mumkin.
-class DaromadTafsilotlari extends StatelessWidget {
+class DaromadTafsilotlari extends StatefulWidget {
   const DaromadTafsilotlari({super.key});
 
-  Stream<QuerySnapshot> get _boysStream => FirebaseFirestore.instance
-      .collection('tolovlar')
-      .where('hostel', isEqualTo: 'boys')
-      .snapshots();
+  @override
+  State<DaromadTafsilotlari> createState() => _DaromadTafsilotlariState();
+}
 
-  Stream<QuerySnapshot> get _girlsStream => FirebaseFirestore.instance
-      .collection('girls_payments')
-      .where('status', isEqualTo: 'paid')
-      .snapshots();
+class _DaromadTafsilotlariState extends State<DaromadTafsilotlari> {
+  // MUHIM: Future initState'da bir marta yaratiladi. build() ichida
+  // yaratilsa, har bir qayta chizishda yangi so'rov ketardi.
+  late Future<List<_PaymentRecord>> _yozuvlar;
+
+  @override
+  void initState() {
+    super.initState();
+    _yozuvlar = _yukla();
+  }
+
+  /// Tasdiqlangan to'lovlarni yuklaydi.
+  ///
+  /// Ilgari ikkita Firestore oqimi bor edi: 'tolovlar' (o'g'il
+  /// bolalar) va 'girls_payments' (qizlar). Laravel'da qizlar uchun
+  /// alohida jadval yo'q - hamma to'lov `payments` da, bino esa
+  /// xonaning hostel_type maydonida ko'rsatiladi.
+  Future<List<_PaymentRecord>> _yukla() async {
+    final javob = await ApiService().get('payments');
+
+    final xom = javob['data'];
+    if (xom is! List) return <_PaymentRecord>[];
+
+    final natija = <_PaymentRecord>[];
+
+    for (final e in xom) {
+      if (e is! Map) continue;
+      final d = Map<String, dynamic>.from(e);
+
+      // Faqat tasdiqlangan to'lovlar daromadga kiradi.
+      final holat = (d['status'] ?? '').toString().toLowerCase();
+      if (holat != 'approved' && holat != 'paid') continue;
+
+      // Bino: xonaning turi, bo'lmasa talabaning binosi.
+      var bino = 'boys';
+      final xona = d['room'];
+      if (xona is Map &&
+          (xona['hostel_type'] ?? '').toString().toLowerCase() == 'girls') {
+        bino = 'girls';
+      } else {
+        final talaba = d['student'];
+        if (talaba is Map &&
+            (talaba['hostel'] ?? '').toString().toLowerCase() == 'girls') {
+          bino = 'girls';
+        }
+      }
+
+      natija.add(_PaymentRecord(
+        data: d,
+        hostel: bino,
+        date: _dateOfRaw(d['paid_at'] ?? d['created_at']),
+      ));
+    }
+
+    return natija;
+  }
+
+  Future<void> _qaytaYukla() async {
+    if (!mounted) return;
+    setState(() {
+      _yozuvlar = _yukla();
+    });
+    await _yozuvlar;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,48 +175,42 @@ class DaromadTafsilotlari extends StatelessWidget {
               color: _C.white, fontWeight: FontWeight.w800, fontSize: 15),
         ),
       ),
-      // ⚡ Ikkita jonli oqim (o'g'il bolalar + qiz bolalar) BIR VAQTDA
-      // tinglanadi — ikkalasidan biri o'zgarsa ham, ro'yxat darhol
-      // qayta hisoblanadi.
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _boysStream,
-        builder: (context, boysSnap) {
-          return StreamBuilder<QuerySnapshot>(
-            stream: _girlsStream,
-            builder: (context, girlsSnap) {
-              if (boysSnap.hasError || girlsSnap.hasError) {
-                return Center(
-                  child: Padding(
+      body: FutureBuilder<List<_PaymentRecord>>(
+        future: _yozuvlar,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      "Yuklashda xatolik: ${boysSnap.error ?? girlsSnap.error}",
+                      "Yuklashda xatolik: ${snapshot.error}",
                       style: const TextStyle(color: _C.muted),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                );
-              }
-
-              if (!boysSnap.hasData || !girlsSnap.hasData) {
-                return const Center(
-                    child: CircularProgressIndicator(color: _C.violet));
-              }
-
-              final records = <_PaymentRecord>[
-                for (final doc in boysSnap.data!.docs)
-                  _PaymentRecord(
-                    data: doc.data() as Map<String, dynamic>,
-                    hostel: 'boys',
-                    date: _dateOfRaw((doc.data() as Map)['date']),
+                  ElevatedButton.icon(
+                    onPressed: _qaytaYukla,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Qayta urinish'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _C.purple,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
-                for (final doc in girlsSnap.data!.docs)
-                  _PaymentRecord(
-                    data: doc.data() as Map<String, dynamic>,
-                    hostel: 'girls',
-                    date: _dateOfRaw((doc.data() as Map)['paidAt'] ??
-                        (doc.data() as Map)['createdAt']),
-                  ),
-              ];
+                ],
+              ),
+            );
+          }
+
+          if (!snapshot.hasData) {
+            return const Center(
+                child: CircularProgressIndicator(color: _C.violet));
+          }
+
+          final records = List<_PaymentRecord>.from(snapshot.data!);
 
               // 🗓️ Har doim sana bo'yicha (eng yangisidan eng eskisiga)
               // tartiblab qo'yamiz — shunda "Oldingi/Keyingi" navigatsiyasi
@@ -243,8 +319,6 @@ class DaromadTafsilotlari extends StatelessWidget {
                   ),
                 ],
               );
-            },
-          );
         },
       ),
     );

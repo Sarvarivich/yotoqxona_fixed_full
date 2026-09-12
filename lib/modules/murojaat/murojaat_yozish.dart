@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/complaint_model.dart';
+import '../services/api_service.dart';
 
 // ─── Creative LIGHT palette (ilova bo'ylab bir xil) ───
 class _LC {
@@ -83,51 +83,25 @@ class _MurojaatYozishState extends State<MurojaatYozish> {
 
     setState(() => _isLoading = true);
 
-    // Anonim bo'lsa ham, talabaning haqiqiy ID/ismi bazaga saqlanadi —
-    // faqat "isAnonymous" belgisi orqali bildiriladi. Shu tufayli admin
-    // har doim murojaat kimdan kelganini bila oladi.
-    final name = widget.studentName;
+    // DIQQAT: Laravel'da anonim murojaat HAQIQATAN anonim -
+    // student_id NULL qoldiriladi va admin ham kimdan kelganini
+    // ko'ra olmaydi. Firestore'da esa ID saqlanardi.
 
     try {
-      ComplaintModel newComplaint = ComplaintModel(
-        id: '',
-        studentId: widget.studentId,
-        studentName: name,
-        title: _titleController.text.trim(),
-        description: _descController.text.trim(),
-        category: _selectedCategory,
-        status: ComplaintStatus.pending,
-        priority: ComplaintPriority.medium,
-        targetRole: _selectedTarget,
-        createdAt: DateTime.now(),
-        attachments: [],
-        isAnonymous: _isAnonymous,
-      );
-
-      final complaintData = newComplaint.toJson();
-      complaintData['hostel'] = widget.hostel;
-
-      DocumentReference docRef = await FirebaseFirestore.instance
-          .collection('murojaatlar')
-          .add(complaintData)
-          .timeout(const Duration(seconds: 20));
-
-      await docRef.update({'id': docRef.id});
-
-      // Tegishli qabul qiluvchi (mudir yoki admin) uchun Firestore notification yozish
-      await FirebaseFirestore.instance.collection('bildirishnomalar').add({
-        'type': 'new_complaint',
-        'hostel': widget.hostel,
-        'title': '📩 Yangi murojaat',
-        'body': '$name: ${_titleController.text.trim()}',
+      // Murojaat Laravel'ga yuboriladi. Backend student_id va
+      // hostel_id ni o'zi to'ldiradi: student_id tokendan olinadi,
+      // hostel esa talabaning joriy xonasidan aniqlanadi.
+      //
+      // ESLATMA: anonim yuborilganda backend student_id ni NULL
+      // qoldiradi, ya'ni murojaat haqiqatan anonim bo'ladi va admin
+      // ham kimdan kelganini ko'ra olmaydi.
+      await ApiService().post('complaints', body: {
+        'title': _titleController.text.trim(),
+        'description': _descController.text.trim(),
         'category': _selectedCategory,
-        'complaintId': docRef.id,
-        'studentId': widget.studentId,
-        'studentName': name,
-        'isAnonymous': _isAnonymous,
-        'isRead': false,
-        'createdAt': FieldValue.serverTimestamp(),
-        'targetRole': _selectedTarget.value,
+        'priority': 'medium',
+        'target_role': _selectedTarget.value,
+        'is_anonymous': _isAnonymous,
       });
 
       if (!mounted) return;
@@ -140,24 +114,13 @@ class _MurojaatYozishState extends State<MurojaatYozish> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-    } on FirebaseException catch (e) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            e.code == 'permission-denied'
-                ? "Ruxsat yo'q: Firestore qoidalarini tekshiring"
-                : "Xatolik yuz berdi: ${e.message ?? e.code}",
+            "Murojaat yuborilmadi: ${e.toString().replaceFirst('Exception: ', '')}",
           ),
-          backgroundColor: _LC.coral,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Murojaat yuborilmadi: internetni tekshiring"),
           backgroundColor: _LC.coral,
           behavior: SnackBarBehavior.floating,
         ),
@@ -500,7 +463,7 @@ class _MurojaatYozishState extends State<MurojaatYozish> {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            "Boshqalarga ismingiz ko'rsatilmaydi (admin baribir biladi)",
+                            "Boshqalarga ismingiz ko'rsatilmaydi (superadmin ko'radi)",
                             style: TextStyle(
                                 fontSize: 11.5,
                                 color: _LC.muted.withOpacity(0.95)),

@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../services/excel_download.dart';
+import '../services/api_service.dart';
 
 // ─── HisobotlarScreen: Yotoqxona (o'g'il bolalar / umumiy) bo'yicha
 // umumiy statistika, grafiklar va Excel eksport — qizlar bo'limidagi
@@ -63,10 +63,16 @@ String _formatMoney(num value) {
 bool _isRoomOccupied(Map<String, dynamic> data) {
   if (data.containsKey('status') && data['status'] == 'occupied') return true;
   final int capacity = (data['capacity'] as num?)?.toInt() ?? 0;
+  // Laravel'da xonada studentIds massivi yo'q - bandlik
+  // current_occupants ustunida saqlanadi.
   final List studentIdsList = (data['studentIds'] as List?) ?? [];
   final int occupantsCount = studentIdsList.isNotEmpty
       ? studentIdsList.length
-      : ((data['currentOccupants'] as num?)?.toInt() ?? 0);
+      : (int.tryParse(
+            (data['current_occupants'] ?? data['currentOccupants'] ?? 0)
+                .toString(),
+          ) ??
+          0);
   if (capacity > 0 && occupantsCount >= capacity) return true;
   if (data.containsKey('students')) {
     return (data['students'] as List).isNotEmpty;
@@ -83,112 +89,163 @@ class HisobotlarScreen extends StatefulWidget {
 }
 
 class _HisobotlarScreenState extends State<HisobotlarScreen> {
-  final _db = FirebaseFirestore.instance;
-  late final Stream<HisobotStats> _statsStream;
+  final _api = ApiService();
+  late Future<HisobotStats> _stats;
   bool _isExporting = false;
 
   @override
   void initState() {
     super.initState();
-    _statsStream = _watchStats();
+    _stats = _yukla();
   }
 
-  Stream<HisobotStats> _watchStats() {
-    QuerySnapshot<Map<String, dynamic>>? studentsSnap;
-    QuerySnapshot<Map<String, dynamic>>? roomsSnap;
-    QuerySnapshot<Map<String, dynamic>>? complaintsSnap;
-    QuerySnapshot<Map<String, dynamic>>? paymentsSnap;
+  double _son(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? 0;
+  }
 
-    late final StreamController<HisobotStats> controller;
-    final subs = <StreamSubscription>[];
+  /// Xona yoki to'lovning binosini aniqlaydi.
+  ///
+  /// Laravel'da bino uch joyda bo'lishi mumkin: xonaning hostel_type
+  /// ustunida, bog'langan xona ichida yoki talabaning hostel
+  /// maydonida.
+  String _bino(Map<String, dynamic> e) {
+    var bino = (e['hostel'] ?? e['hostel_type'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
 
-    void emitIfReady() {
-      if (studentsSnap == null ||
-          roomsSnap == null ||
-          complaintsSnap == null ||
-          paymentsSnap == null) {
-        return;
+    if (bino.isEmpty || bino.length > 10) {
+      final xona = e['room'];
+      if (xona is Map) {
+        bino = (xona['hostel_type'] ?? '').toString().toLowerCase();
       }
-
-      final totalStudents = studentsSnap!.docs.length;
-      final totalRooms = roomsSnap!.docs.length;
-      final occupiedRooms =
-          roomsSnap!.docs.where((d) => _isRoomOccupied(d.data())).length;
-
-      int pendingComplaints = 0;
-      int resolvedComplaints = 0;
-      for (final doc in complaintsSnap!.docs) {
-        final status = doc.data()['status'];
-        if (status == 'resolved' || status == 'closed') {
-          resolvedComplaints++;
-        } else {
-          pendingComplaints++;
-        }
+    }
+    if (bino.isEmpty) {
+      final talaba = e['student'];
+      if (talaba is Map) {
+        bino = (talaba['hostel'] ?? '').toString().toLowerCase();
       }
-
-      double totalIncome = 0;
-      for (final doc in paymentsSnap!.docs) {
-        final amt = doc.data()['amount'];
-        if (amt is num) totalIncome += amt.toDouble();
-        if (amt is String) totalIncome += double.tryParse(amt) ?? 0;
-      }
-
-      controller.add(HisobotStats(
-        totalStudents: totalStudents,
-        totalRooms: totalRooms,
-        occupiedRooms: occupiedRooms,
-        emptyRooms: totalRooms - occupiedRooms,
-        pendingComplaints: pendingComplaints,
-        resolvedComplaints: resolvedComplaints,
-        totalIncome: totalIncome,
-      ));
     }
 
-    controller = StreamController<HisobotStats>.broadcast(
-      onListen: () {
-        subs.add(_db
-            .collection('foydalanuvchilar')
-            .where('role', isEqualTo: 'talaba')
-            .where('hostel', isEqualTo: widget.hostel)
-            .snapshots()
-            .listen((s) {
-          studentsSnap = s;
-          emitIfReady();
-        }, onError: controller.addError));
-        subs.add(_db
-            .collection('xonalar')
-            .where('hostel', isEqualTo: widget.hostel)
-            .snapshots()
-            .listen((s) {
-          roomsSnap = s;
-          emitIfReady();
-        }, onError: controller.addError));
-        subs.add(_db
-            .collection('murojaatlar')
-            .where('hostel', isEqualTo: widget.hostel)
-            .snapshots()
-            .listen((s) {
-          complaintsSnap = s;
-          emitIfReady();
-        }, onError: controller.addError));
-        subs.add(_db
-            .collection('tolovlar')
-            .where('hostel', isEqualTo: widget.hostel)
-            .snapshots()
-            .listen((s) {
-          paymentsSnap = s;
-          emitIfReady();
-        }, onError: controller.addError));
-      },
-      onCancel: () async {
-        for (final s in subs) {
-          await s.cancel();
-        }
-        subs.clear();
-      },
-    );
+    return bino.isEmpty ? 'boys' : bino;
+  }
 
-    return controller.stream;
+  bool _shuBino(Map<String, dynamic> e) =>
+      _bino(e) == widget.hostel.toLowerCase();
+
+  /// Hisobot raqamlarini Laravel API'dan yig'adi.
+  ///
+  /// Ilgari to'rtta Firestore oqimi real vaqtda tinglanardi. Endi
+  /// ma'lumot ekran ochilganda bir marta yuklanadi va pastga tortib
+  /// yangilanadi.
+  Future<HisobotStats> _yukla() async {
+    int totalStudents = 0;
+    int totalRooms = 0;
+    int occupiedRooms = 0;
+    int pendingComplaints = 0;
+    int resolvedComplaints = 0;
+    double totalIncome = 0;
+
+    // --- Talabalar (sahifama-sahifa) ---
+    try {
+      int sahifa = 1;
+      int oxirgi = 1;
+      do {
+        final javob = await _api.get(
+          'students?role=talaba&hostel=${widget.hostel}'
+          '&per_page=100&page=$sahifa',
+        );
+        final royxat = javob['data'];
+        if (royxat is List) totalStudents += royxat.length;
+
+        final meta = javob['meta'];
+        oxirgi = meta is Map
+            ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+            : sahifa;
+        sahifa++;
+      } while (sahifa <= oxirgi && sahifa <= 100);
+    } catch (e) {
+      debugPrint('Talabalarni yuklashda xatolik: $e');
+    }
+
+    // --- Xonalar ---
+    try {
+      final javob = await _api.get('rooms');
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final x in royxat) {
+          if (x is! Map) continue;
+          final d = Map<String, dynamic>.from(x);
+          if (!_shuBino(d)) continue;
+          totalRooms++;
+          if (_isRoomOccupied(d)) occupiedRooms++;
+        }
+      }
+    } catch (e) {
+      debugPrint('Xonalarni yuklashda xatolik: $e');
+    }
+
+    // --- Murojaatlar ---
+    try {
+      final javob = await _api.get('complaints');
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final c in royxat) {
+          if (c is! Map) continue;
+          final d = Map<String, dynamic>.from(c);
+          if (!_shuBino(d)) continue;
+
+          final holat = (d['status'] ?? '').toString();
+          if (holat == 'resolved' || holat == 'closed') {
+            resolvedComplaints++;
+          } else {
+            pendingComplaints++;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Murojaatlarni yuklashda xatolik: $e');
+    }
+
+    // --- To'lovlar (faqat tasdiqlanganlari daromadga kiradi) ---
+    try {
+      final javob = await _api.get('payments');
+      final royxat = javob['data'];
+      if (royxat is List) {
+        for (final t in royxat) {
+          if (t is! Map) continue;
+          final d = Map<String, dynamic>.from(t);
+          if (!_shuBino(d)) continue;
+
+          final holat = (d['status'] ?? '').toString().toLowerCase();
+          if (holat != 'approved' && holat != 'paid') continue;
+
+          totalIncome += _son(d['amount']);
+        }
+      }
+    } catch (e) {
+      debugPrint("To'lovlarni yuklashda xatolik: $e");
+    }
+
+    return HisobotStats(
+      totalStudents: totalStudents,
+      totalRooms: totalRooms,
+      occupiedRooms: occupiedRooms,
+      emptyRooms: totalRooms - occupiedRooms,
+      pendingComplaints: pendingComplaints,
+      resolvedComplaints: resolvedComplaints,
+      totalIncome: totalIncome,
+    );
+  }
+
+  Future<void> _qaytaYukla() async {
+    if (!mounted) return;
+    setState(() {
+      _stats = _yukla();
+    });
+    await _stats;
   }
 
   Future<void> _exportExcel(HisobotStats stats) async {
@@ -250,8 +307,8 @@ class _HisobotlarScreenState extends State<HisobotlarScreen> {
     return Scaffold(
       backgroundColor: _C.bgBase,
       body: SafeArea(
-        child: StreamBuilder<HisobotStats>(
-          stream: _statsStream,
+        child: FutureBuilder<HisobotStats>(
+          future: _stats,
           builder: (context, snapshot) {
             if (!snapshot.hasData && !snapshot.hasError) {
               return const Center(

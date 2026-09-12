@@ -327,7 +327,7 @@ final result = await openOrDownloadFile(
                         label: Text(
                           available
                               ? 'Shartnoma'
-                              : 'Shartnoma (to\'lov kutilmoqda)',
+                              : 'Shartnoma (xona kutilmoqda)',
                         ),
                       );
                     },

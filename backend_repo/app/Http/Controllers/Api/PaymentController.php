@@ -154,6 +154,9 @@ class PaymentController extends Controller
 
         $validator = Validator::make($request->all(), [
             'status' => 'required|string|in:pending,approved,rejected',
+            // Moliyachi kiritadigan qoldiq qarz. Ixtiyoriy:
+            // kiritilmasa oldingi qiymat saqlanib qoladi.
+            'remaining_amount' => 'nullable|numeric|min:0',
             'note' => 'nullable|string',
         ]);
 
@@ -168,6 +171,12 @@ class PaymentController extends Controller
 
         $payment->status = $request->status;
         $payment->reviewed_by = $reviewer->id;
+
+        // Qoldiq qarzni faqat moliyachi kiritganda yozamiz.
+        // Kiritmasa eski qiymat o'zgarmaydi.
+        if ($request->filled('remaining_amount')) {
+            $payment->remaining_amount = $request->remaining_amount;
+        }
         if ($request->filled('note')) {
             $payment->note = $request->note;
         }

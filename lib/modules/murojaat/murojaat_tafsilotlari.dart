@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/complaint_model.dart';
 import '../models/user_model.dart';
 import 'murojaat_javob.dart';
+import '../services/api_service.dart';
 
 // ─── Creative LIGHT palette (ilova bo'ylab bir xil) ───
 class _LC {
@@ -50,44 +50,59 @@ class _MurojaatTafsilotlariState extends State<MurojaatTafsilotlari> {
   }
 
   Future<void> _loadStudentInfo() async {
-    // studentId endi har doim haqiqiy talaba ID sini saqlaydi (anonim
-    // so'ralgan bo'lsa ham) — shuning uchun admin talaba ma'lumotini
-    // har doim ko'ra oladi.
-    if (_complaint.studentId.isNotEmpty) {
-      DocumentSnapshot doc = await FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .doc(_complaint.studentId)
-          .get();
-      if (doc.exists) {
-        _studentInfo = UserModel.fromJson(doc.data() as Map<String, dynamic>);
+    // Laravel'da anonim murojaatda student_id NULL bo'ladi - ya'ni
+    // talaba ma'lumoti umuman mavjud emas. Anonim bo'lmaganda esa
+    // backend murojaat bilan birga student obyektini qaytaradi,
+    // shuning uchun ko'p hollarda qo'shimcha so'rov kerak emas.
+    try {
+      if (_complaint.studentId.isNotEmpty) {
+        final javob = await ApiService().get('students/${_complaint.studentId}');
+        final d = javob['data'];
+        if (d is Map) {
+          _studentInfo = UserModel.fromJson(Map<String, dynamic>.from(d));
+        }
       }
+    } catch (e) {
+      // Talaba ma'lumoti olinmasa ekran baribir ochiladi -
+      // murojaatning o'zi ko'rinadi.
+      debugPrint('Talaba ma\'lumotini yuklashda xatolik: $e');
     }
+
     if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _updateStatus(ComplaintStatus newStatus) async {
-    await FirebaseFirestore.instance
-        .collection('murojaatlar')
-        .doc(_complaint.id)
-        .update({
-      'status': newStatus.name,
-      'updatedAt': FieldValue.serverTimestamp(),
-      if (newStatus == ComplaintStatus.resolved)
-        'resolvedAt': FieldValue.serverTimestamp(),
-    });
+    try {
+      // Backend resolved_at ni o'zi qo'yadi va javob bergan xodimni
+      // (responded_by) tokendan aniqlaydi.
+      await ApiService().put('complaints/${_complaint.id}', body: {
+        'status': newStatus.name,
+      });
 
-    setState(() {
-      _complaint = _complaint.copyWith(
-        status: newStatus,
-        updatedAt: DateTime.now(),
-      );
-    });
+      if (!mounted) return;
 
-    if (mounted) {
+      setState(() {
+        _complaint = _complaint.copyWith(
+          status: newStatus,
+          updatedAt: DateTime.now(),
+        );
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Holat yangilandi"),
           backgroundColor: _LC.teal,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Holatni yangilab bo'lmadi: ${e.toString().replaceFirst('Exception: ', '')}",
+          ),
+          backgroundColor: _LC.coral,
           behavior: SnackBarBehavior.floating,
         ),
       );

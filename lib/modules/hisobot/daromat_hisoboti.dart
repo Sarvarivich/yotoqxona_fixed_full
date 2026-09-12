@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/api_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../hisobot/daromad_tafsilotlarri.dart';
 
@@ -14,7 +14,7 @@ class DaromadHisobot extends StatefulWidget {
 
 class _DaromadHisobotState extends State<DaromadHisobot> {
   DateTime _parseDate(dynamic raw) {
-    if (raw is Timestamp) return raw.toDate();
+    if (raw is DateTime) return raw;
     if (raw is String) return DateTime.tryParse(raw) ?? DateTime.now();
     return DateTime.now();
   }
@@ -31,56 +31,82 @@ class _DaromadHisobotState extends State<DaromadHisobot> {
     return "${v.toStringAsFixed(0)} so'm";
   }
 
-  // 🌍 O'g'il bolalar ('tolovlar') va qiz bolalar ('girls_payments')
-  // to'lovlari endi IKKALASI BIRGALIKDA, real vaqtda o'qiladi va bitta
-  // umumiy grafik/statistikaga birlashtiriladi.
-  Stream<QuerySnapshot> get _boysStream => FirebaseFirestore.instance
-      .collection('tolovlar')
-      .where('hostel', isEqualTo: 'boys')
-      .snapshots();
+  // Tasdiqlangan to'lovlar Laravel API'dan bir marta yuklanadi.
+  //
+  // Ilgari ikkita jonli Firestore oqimi bor edi: 'tolovlar' (o'g'il
+  // bolalar) va 'girls_payments' (qizlar). Laravel'da qizlar uchun
+  // alohida jadval yo'q - hamma to'lov `payments` da, bino esa
+  // xonaning hostel_type maydonida ko'rsatiladi.
+  //
+  // MUHIM: Future initState'da yaratiladi. build() ichida yaratilsa,
+  // har bir qayta chizishda yangi so'rov ketardi.
+  late Future<List<MapEntry<Map<String, dynamic>, String>>> _tolovlar;
 
-  Stream<QuerySnapshot> get _girlsStream => FirebaseFirestore.instance
-      .collection('girls_payments')
-      .where('status', isEqualTo: 'paid')
-      .snapshots();
+  @override
+  void initState() {
+    super.initState();
+    _tolovlar = _yukla();
+  }
+
+  Future<List<MapEntry<Map<String, dynamic>, String>>> _yukla() async {
+    final natija = <MapEntry<Map<String, dynamic>, String>>[];
+
+    final javob = await ApiService().get('payments');
+    final royxat = javob['data'];
+    if (royxat is! List) return natija;
+
+    for (final e in royxat) {
+      if (e is! Map) continue;
+      final d = Map<String, dynamic>.from(e);
+
+      // Faqat tasdiqlangan to'lovlar daromadga kiradi.
+      final holat = (d['status'] ?? '').toString().toLowerCase();
+      if (holat != 'approved' && holat != 'paid') continue;
+
+      // Bino: xonaning turi, bo'lmasa talabaning binosi.
+      var bino = 'boys';
+      final xona = d['room'];
+      if (xona is Map &&
+          (xona['hostel_type'] ?? '').toString().toLowerCase() == 'girls') {
+        bino = 'girls';
+      } else {
+        final talaba = d['student'];
+        if (talaba is Map &&
+            (talaba['hostel'] ?? '').toString().toLowerCase() == 'girls') {
+          bino = 'girls';
+        }
+      }
+
+      natija.add(MapEntry(d, bino));
+    }
+
+    return natija;
+  }
 
   @override
   Widget build(BuildContext context) {
-    // ⚡ Real vaqtda: ikkita jonli oqim (o'g'il + qiz bolalar) bir vaqtda
-    // tinglanadi — qaysi biri o'zgarsa ham, UI darhol yangilanadi.
-    return StreamBuilder<QuerySnapshot>(
-      stream: _boysStream,
-      builder: (context, boysSnapshot) {
-        return StreamBuilder<QuerySnapshot>(
-          stream: _girlsStream,
-          builder: (context, girlsSnapshot) {
-            if (boysSnapshot.hasError || girlsSnapshot.hasError) {
-              return _messageCard(
-                icon: Icons.error_outline,
-                iconColor: Colors.red,
-                text: "Xatolik: ${boysSnapshot.error ?? girlsSnapshot.error}",
-              );
-            }
+    return FutureBuilder<List<MapEntry<Map<String, dynamic>, String>>>(
+      future: _tolovlar,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _messageCard(
+            icon: Icons.error_outline,
+            iconColor: Colors.red,
+            text: "Xatolik: ${snapshot.error}",
+          );
+        }
 
-            if (!boysSnapshot.hasData || !girlsSnapshot.hasData) {
-              return const Card(
-                elevation: 4,
-                child: Padding(
-                  padding: EdgeInsets.all(32),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              );
-            }
+        if (!snapshot.hasData) {
+          return const Card(
+            elevation: 4,
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
 
-            // 🔗 Ikkala manbadan kelgan hujjatlarni ('date' yoki
-            // 'paidAt'/'createdAt' maydoni bilan birga) bitta ro'yxatga
-            // birlashtiramiz.
-            final entries = <MapEntry<Map<String, dynamic>, String>>[
-              for (final doc in boysSnapshot.data!.docs)
-                MapEntry(doc.data() as Map<String, dynamic>, 'boys'),
-              for (final doc in girlsSnapshot.data!.docs)
-                MapEntry(doc.data() as Map<String, dynamic>, 'girls'),
-            ];
+        final entries = snapshot.data!;
 
             final now = DateTime.now();
             final startOfToday = DateTime(now.year, now.month, now.day);
@@ -100,9 +126,10 @@ class _DaromadHisobotState extends State<DaromadHisobot> {
               final source = entry.value;
               // Qizlar yotoqxonasida 'date' maydoni mavjud emas — to'lov
               // sanasi 'paidAt' (yoki bo'lmasa 'createdAt') orqali olinadi.
-              final date = source == 'girls'
-                  ? _parseDate(data['paidAt'] ?? data['createdAt'])
-                  : _parseDate(data['date']);
+              // Laravel'da sana paid_at da, bo'lmasa created_at da.
+              final date = _parseDate(
+                data['paid_at'] ?? data['created_at'] ?? data['date'],
+              );
               final amount = _parseAmount(data['amount']);
 
               totalIncome += amount;
@@ -390,8 +417,6 @@ class _DaromadHisobotState extends State<DaromadHisobot> {
                 ),
               ),
             );
-          },
-        );
       },
     );
   }

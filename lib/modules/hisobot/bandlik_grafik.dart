@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/api_service.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/room_model.dart';
 
@@ -26,6 +26,56 @@ class BandlikGrafik extends StatefulWidget {
 }
 
 class _BandlikGrafikState extends State<BandlikGrafik> {
+  // Xonalar Laravel API'dan bir marta yuklanadi.
+  //
+  // MUHIM: Future initState'da yaratiladi. build() ichida yaratilsa,
+  // har bir qayta chizishda yangi so'rov ketardi va grafik
+  // "yuklanmoqda" holatiga qaytib turardi.
+  late Future<List<Map<String, dynamic>>> _xonalar;
+
+  @override
+  void initState() {
+    super.initState();
+    _xonalar = _yukla();
+  }
+
+  /// Shu binoning xonalarini yuklaydi.
+  ///
+  /// Laravel'da xonaning binosi ikki joyda bo'lishi mumkin:
+  /// `hostel_type` ustunida ('boys'/'girls') yoki bog'langan
+  /// `hostel` obyektining `code` maydonida.
+  Future<List<Map<String, dynamic>>> _yukla() async {
+    final xom = await ApiService().getRooms();
+    final natija = <Map<String, dynamic>>[];
+
+    for (final x in xom) {
+      if (x is! Map) continue;
+      final d = Map<String, dynamic>.from(x);
+
+      var bino = (d['hostel_type'] ?? '').toString().trim().toLowerCase();
+
+      if (bino.isEmpty || bino.length > 10) {
+        final h = d['hostel'];
+        if (h is Map) {
+          bino = (h['code'] ?? '').toString().trim().toLowerCase();
+          if (bino.isEmpty) {
+            final nom = (h['name'] ?? '').toString().toLowerCase();
+            bino = nom.contains('qiz') ? 'girls' : 'boys';
+          }
+        } else if (h != null) {
+          bino = h.toString().trim().toLowerCase();
+        }
+      }
+
+      if (bino.isEmpty) bino = 'boys';
+      if (bino != widget.hostel.toLowerCase()) continue;
+
+      natija.add(d);
+    }
+
+    return natija;
+  }
+
   static const Map<RoomStatus, Color> _statusColor = {
     RoomStatus.occupied: Colors.blue,
     RoomStatus.empty: Colors.green,
@@ -144,27 +194,20 @@ class _BandlikGrafikState extends State<BandlikGrafik> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('xonalar')
-          .where('hostel', isEqualTo: widget.hostel)
-          .snapshots(),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _xonalar,
       builder: (context, snapshot) {
-        final bool isLoading = !snapshot.hasData;
+        final bool isLoading = !snapshot.hasData && !snapshot.hasError;
 
         int occupied = 0, empty = 0, paymentPending = 0, renovation = 0;
         final Map<int, List<RoomModel>> byFloor = {};
 
         if (snapshot.hasData) {
-          for (final doc in snapshot.data!.docs) {
-            final data = doc.data() as Map<String, dynamic>;
-            if (data['id'] == null || (data['id'] as String).isEmpty) {
-              data['id'] = doc.id;
-            }
+          for (final data in snapshot.data!) {
             final status = _normalizedStatus(data);
-            // RoomModel.fromJson o'z status'ini xom Firestore
-            // qiymatidan o'qiydi — normallashtirilgan holatni to'g'ri
-            // ko'rsatish uchun uni ustidan yozamiz.
+            // RoomModel.fromJson o'z status'ini xom qiymatdan o'qiydi —
+            // normallashtirilgan holatni to'g'ri ko'rsatish uchun uni
+            // ustidan yozamiz.
             data['status'] = status.name;
             final room = RoomModel.fromJson(data);
 

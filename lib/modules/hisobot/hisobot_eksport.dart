@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:excel/excel.dart' as xls;
 import '../services/excel_download.dart';
+import '../services/api_service.dart';
 
 class HisobotEksport extends StatefulWidget {
   final String hostel;
@@ -26,41 +26,90 @@ class _HisobotEksportState extends State<HisobotEksport> {
     try {
       Map<String, dynamic> exportData = {};
 
-      // Export based on selection
+      // Ma'lumot Laravel API'dan olinadi.
+      //
+      // Ilgari to'rtta Firestore kolleksiyasi o'qilardi. Laravel'da
+      // qizlar uchun alohida jadval yo'q - bino filtri so'rov
+      // parametri orqali uzatiladi.
+      final api = ApiService();
+
+      /// Sahifama-sahifa yuklaydi (backend bir so'rovda 100 tadan
+      /// ko'p bermaydi).
+      Future<List<dynamic>> sahifalab(String endpoint) async {
+        final natija = <dynamic>[];
+        int sahifa = 1;
+        int oxirgi = 1;
+        do {
+          final ajratgich = endpoint.contains('?') ? '&' : '?';
+          final javob = await api.get(
+            '$endpoint${ajratgich}per_page=100&page=$sahifa',
+          );
+          final royxat = javob['data'];
+          if (royxat is List) natija.addAll(royxat);
+
+          final meta = javob['meta'];
+          oxirgi = meta is Map
+              ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+              : sahifa;
+          sahifa++;
+        } while (sahifa <= oxirgi && sahifa <= 100);
+        return natija;
+      }
+
+      /// Bino bo'yicha filtrlaydi. Xonada bino `hostel_type` da,
+      /// to'lovda esa bog'langan xona ichida bo'ladi.
+      List<dynamic> binoBoyicha(List<dynamic> royxat) {
+        return royxat.where((e) {
+          if (e is! Map) return false;
+
+          var bino = (e['hostel'] ?? e['hostel_type'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+
+          if (bino.isEmpty || bino.length > 10) {
+            final xona = e['room'];
+            if (xona is Map) {
+              bino = (xona['hostel_type'] ?? '').toString().toLowerCase();
+            }
+          }
+          if (bino.isEmpty) {
+            final talaba = e['student'];
+            if (talaba is Map) {
+              bino = (talaba['hostel'] ?? '').toString().toLowerCase();
+            }
+          }
+
+          if (bino.isEmpty) bino = 'boys';
+          return bino == widget.hostel.toLowerCase();
+        }).toList();
+      }
+
       if (_selectedData == 'all' || _selectedData == 'foydalanuvchilar') {
-        QuerySnapshot usersSnapshot = await FirebaseFirestore.instance
-            .collection('foydalanuvchilar')
-            .where('hostel', isEqualTo: widget.hostel)
-            .get();
-        exportData['foydalanuvchilar'] =
-            usersSnapshot.docs.map((doc) => doc.data()).toList();
+        exportData['foydalanuvchilar'] = await sahifalab(
+          'students?hostel=${widget.hostel}&detailed=1',
+        );
       }
 
       if (_selectedData == 'all' || _selectedData == 'xonalar') {
-        QuerySnapshot roomsSnapshot = await FirebaseFirestore.instance
-            .collection('xonalar')
-            .where('hostel', isEqualTo: widget.hostel)
-            .get();
+        final javob = await api.get('rooms');
+        final royxat = javob['data'];
         exportData['xonalar'] =
-            roomsSnapshot.docs.map((doc) => doc.data()).toList();
+            binoBoyicha(royxat is List ? royxat : const []);
       }
 
       if (_selectedData == 'all' || _selectedData == 'murojaatlar') {
-        QuerySnapshot complaintsSnapshot = await FirebaseFirestore.instance
-            .collection('murojaatlar')
-            .where('hostel', isEqualTo: widget.hostel)
-            .get();
+        final javob = await api.get('complaints');
+        final royxat = javob['data'];
         exportData['murojaatlar'] =
-            complaintsSnapshot.docs.map((doc) => doc.data()).toList();
+            binoBoyicha(royxat is List ? royxat : const []);
       }
 
       if (_selectedData == 'all' || _selectedData == 'tolovlar') {
-        QuerySnapshot paymentsSnapshot = await FirebaseFirestore.instance
-            .collection('tolovlar')
-            .where('hostel', isEqualTo: widget.hostel)
-            .get();
+        final javob = await api.get('payments');
+        final royxat = javob['data'];
         exportData['tolovlar'] =
-            paymentsSnapshot.docs.map((doc) => doc.data()).toList();
+            binoBoyicha(royxat is List ? royxat : const []);
       }
 
       // Add metadata
@@ -168,15 +217,31 @@ class _HisobotEksportState extends State<HisobotEksport> {
     return csv.toString();
   }
 
-  // Firestore qiymatini Excel katagiga yozish uchun o'qish qulay matnga
-  // o'giradi (Timestamp -> sana-vaqt, List/Map -> JSON matn va h.k.).
+  // Qiymatni Excel katagiga yozish uchun o'qish qulay matnga o'giradi.
+  //
+  // Laravel sanalarni ISO matn sifatida qaytaradi ("2026-09-11T10:30:00Z"),
+  // shuning uchun Firestore'ning Timestamp turi endi uchramaydi. Lekin
+  // matn ko'rinishidagi sanani ham chiroyli formatga o'giramiz.
   String _cellText(dynamic value) {
     if (value == null) return '';
-    if (value is Timestamp) {
-      final dt = value.toDate();
+
+    String formatla(DateTime dt) {
       String two(int n) => n.toString().padLeft(2, '0');
-      return "${two(dt.day)}.${two(dt.month)}.${dt.year} ${two(dt.hour)}:${two(dt.minute)}";
+      return "${two(dt.day)}.${two(dt.month)}.${dt.year} "
+          "${two(dt.hour)}:${two(dt.minute)}";
     }
+
+    if (value is DateTime) return formatla(value);
+
+    if (value is String) {
+      // ISO sanaga o'xshasa - formatlaymiz, aks holda o'zini qaytaramiz.
+      if (value.length >= 10 && value.contains('-')) {
+        final dt = DateTime.tryParse(value);
+        if (dt != null) return formatla(dt);
+      }
+      return value;
+    }
+
     if (value is List || value is Map) return jsonEncode(value);
     return value.toString();
   }

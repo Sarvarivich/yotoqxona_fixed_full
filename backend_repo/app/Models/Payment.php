@@ -16,6 +16,7 @@ class Payment extends Model
         'hostel_id',
         'room_id',
         'amount',
+        'remaining_amount',
         'method',
         'period',
         'status',

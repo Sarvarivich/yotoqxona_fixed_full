@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/api_service.dart';
 import '../models/user_model.dart';
 
 class TalabalarStatistikasi extends StatefulWidget {
@@ -35,42 +35,73 @@ class _TalabalarStatistikasiState extends State<TalabalarStatistikasi> {
     _totalStudents = 0;
     _studentsWithRoom = 0;
     _studentsWithoutRoom = 0;
-    QuerySnapshot snapshot = await FirebaseFirestore.instance
-        .collection('foydalanuvchilar')
-        .where('role', isEqualTo: 'talaba')
-        .where('hostel', isEqualTo: widget.hostel)
-        .get();
 
-    _totalStudents = snapshot.docs.length;
+    try {
+      final api = ApiService();
+      final talabalar = <Map<String, dynamic>>[];
 
-    for (var doc in snapshot.docs) {
-      UserModel student =
-          UserModel.fromJson(doc.data() as Map<String, dynamic>);
+      // Backend bir so'rovda 100 tadan ko'p bermaydi, shuning uchun
+      // oxirgi sahifagacha aylanamiz.
+      int sahifa = 1;
+      int oxirgi = 1;
+      do {
+        final javob = await api.get(
+          'students?role=talaba&hostel=${widget.hostel}'
+          '&per_page=100&page=$sahifa',
+        );
 
-      // Faculty stats (using faculty field saved at registration)
-      String faculty =
-          student.faculty != null && student.faculty!.trim().isNotEmpty
-              ? student.faculty!
-              : "Noma'lum";
-      _facultyStats[faculty] = (_facultyStats[faculty] ?? 0) + 1;
+        final royxat = javob['data'];
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is Map) talabalar.add(Map<String, dynamic>.from(e));
+          }
+        }
 
-      // Course stats (using studentId)
-      int course = student.studentId != null && student.studentId!.length >= 6
-          ? int.tryParse(student.studentId!.substring(4, 6)) ?? 0
-          : 0;
-      if (course > 0 && course <= 4) {
-        _courseStats[course] = (_courseStats[course] ?? 0) + 1;
+        final meta = javob['meta'];
+        oxirgi = meta is Map
+            ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+            : sahifa;
+        sahifa++;
+      } while (sahifa <= oxirgi && sahifa <= 100);
+
+      _totalStudents = talabalar.length;
+
+      for (final xom in talabalar) {
+        final student = UserModel.fromJson(xom);
+
+        // Fakultet
+        final faculty =
+            student.faculty != null && student.faculty!.trim().isNotEmpty
+                ? student.faculty!
+                : "Noma'lum";
+        _facultyStats[faculty] = (_facultyStats[faculty] ?? 0) + 1;
+
+        // Kurs.
+        //
+        // Ilgari studentId ning 5-6 belgisidan ajratib olinardi -
+        // Firestore'da kurs alohida saqlanmagani uchun. Laravel'da
+        // `course` alohida ustun, shuning uchun to'g'ridan-to'g'ri
+        // o'qiymiz.
+        final course = int.tryParse(
+              (student.course ?? '').replaceAll(RegExp(r'[^0-9]'), ''),
+            ) ??
+            0;
+        if (course > 0 && course <= 4) {
+          _courseStats[course] = (_courseStats[course] ?? 0) + 1;
+        }
+
+        // Xona
+        if (student.hasRoom) {
+          _studentsWithRoom++;
+        } else {
+          _studentsWithoutRoom++;
+        }
       }
-
-      // Room stats
-      if (student.roomId != null && student.roomId!.isNotEmpty) {
-        _studentsWithRoom++;
-      } else {
-        _studentsWithoutRoom++;
-      }
+    } catch (e) {
+      debugPrint('Talabalar statistikasini yuklashda xatolik: $e');
     }
 
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
