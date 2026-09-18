@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum GirlsNotificationTarget {
   all('all', 'Barcha talabalar'),
@@ -46,7 +45,7 @@ class GirlsNotificationModel {
       'targetId': targetId,
       'targetLabel': targetLabel,
       'createdBy': createdBy,
-      'createdAt': Timestamp.fromDate(createdAt),
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 
@@ -59,9 +58,9 @@ class GirlsNotificationModel {
       targetId: json['targetId'] as String?,
       targetLabel: json['targetLabel'] as String?,
       createdBy: json['createdBy'] as String? ?? '',
-      createdAt: json['createdAt'] != null
-          ? (json['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
+      createdAt:
+          DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
+              DateTime.now(),
     );
   }
 }

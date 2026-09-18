@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +6,7 @@ import '../../../models/user_model.dart';
 import '../../providers/girls_payment_provider.dart';
 import '../../services/girls_payment_model.dart';
 import 'add_girls_payment_screen.dart';
+import '../../../services/api_service.dart';
 
 // ─── Creative LIGHT "moliya" palette — qizlar bo'limi to'lovlari uchun
 // mayin lavanda fon + gullab-yashnayotgan gradient hero va "chek"
@@ -330,13 +330,9 @@ class _GirlsPaymentsScreenState extends State<GirlsPaymentsScreen> {
 // Bu yerda oxirgi cheklar jonli (real-time) ko'rsatiladi va "Barchasini
 // ko'rish" tugmasi to'liq tasdiqlash/rad etish ekranini ochadi.
 //
-// ⚠️ MUHIM: bu yerda ataylab Firestore darajasidagi orderBy
-// ISHLATILMAYDI. Sabab: where('hostel', isEqualTo: ...) +
-// orderBy('uploadedAt') kombinatsiyasi composite index talab qiladi,
-// va aynan shu index 'tolov_cheklari' to'plami uchun mavjud emas edi —
-// bu esa "cloud_firestore/failed-precondition" xatoligiga sabab
-// bo'lgan. Saralash endi Dart tomonida amalga oshiriladi, shuning
-// uchun hech qanday qo'shimcha index kerak emas.
+// Ma'lumot Laravel API'dan olinadi: GET /api/payments.
+// Bino xonaning hostel_type maydonidan yoki talabaning hostel
+// maydonidan aniqlanadi - alohida "girls" jadvali yo'q.
 class _StudentChecksSection extends StatelessWidget {
   final UserModel? currentUser;
   const _StudentChecksSection({required this.currentUser});
@@ -386,23 +382,67 @@ class _StudentChecksSection extends StatelessWidget {
   }
 
   DateTime? _uploadedAtOf(Map<String, dynamic> data) {
-    final ts = data['uploadedAt'] ?? data['paymentDate'];
+    // Laravel sanalarni ISO matn sifatida qaytaradi.
+    final ts = data['paid_at'] ??
+        data['created_at'] ??
+        data['uploadedAt'] ??
+        data['paymentDate'];
     if (ts == null) return null;
-    try {
-      return (ts as dynamic).toDate() as DateTime;
-    } catch (_) {
-      return null;
+    if (ts is DateTime) return ts;
+    return DateTime.tryParse(ts.toString());
+  }
+
+  /// Chek qaysi binoga tegishli ekanini aniqlaydi.
+  String _bino(Map<String, dynamic> d) {
+    final xona = d['room'];
+    if (xona is Map) {
+      final t = (xona['hostel_type'] ?? '').toString().toLowerCase();
+      if (t.isNotEmpty) return t;
     }
+
+    final talaba = d['student'];
+    if (talaba is Map) {
+      final t = (talaba['hostel'] ?? '').toString().toLowerCase();
+      if (t.isNotEmpty) return t;
+    }
+
+    final togridan = (d['hostel'] ?? '').toString().toLowerCase();
+    return togridan.isEmpty ? 'boys' : togridan;
+  }
+
+  /// Qizlar yotoqxonasidagi to'lov cheklarini yuklaydi.
+  Future<List<Map<String, dynamic>>> _cheklar() async {
+    final natija = <Map<String, dynamic>>[];
+
+    try {
+      final javob = await ApiService().get('payments');
+      final royxat = javob['data'];
+      if (royxat is! List) return natija;
+
+      for (final e in royxat) {
+        if (e is! Map) continue;
+        final d = Map<String, dynamic>.from(e);
+        if (_bino(d) != 'girls') continue;
+
+        // Ekran talaba ismini tekis maydonda kutadi.
+        final talaba = d['student'];
+        if (talaba is Map) {
+          d['studentName'] ??= (talaba['full_name'] ?? '').toString();
+        }
+
+        natija.add(d);
+      }
+    } catch (_) {
+      // Xato bo'lsa bo'sh ro'yxat qaytadi - bo'lim ko'rinmaydi.
+    }
+
+    return natija;
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      // orderBy ataylab olib tashlandi — composite index shart emas.
-      stream: FirebaseFirestore.instance
-          .collection('tolov_cheklari')
-          .where('hostel', isEqualTo: 'girls')
-          .snapshots(),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _cheklar(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox.shrink();
@@ -425,14 +465,14 @@ class _StudentChecksSection extends StatelessWidget {
           );
         }
 
-        final allDocs = snapshot.data?.docs ?? [];
+        final allDocs = snapshot.data ?? const <Map<String, dynamic>>[];
         if (allDocs.isEmpty) return const SizedBox.shrink();
 
         // Kliyent tomonida uploadedAt bo'yicha kamayish tartibida
         // saralab, faqat oxirgi 5 tasini olamiz.
         final sortedDocs = [...allDocs]..sort((a, b) {
-            final da = _uploadedAtOf(a.data() as Map<String, dynamic>);
-            final db = _uploadedAtOf(b.data() as Map<String, dynamic>);
+            final da = _uploadedAtOf(a);
+            final db = _uploadedAtOf(b);
             if (da == null && db == null) return 0;
             if (da == null) return 1;
             if (db == null) return -1;
@@ -441,8 +481,7 @@ class _StudentChecksSection extends StatelessWidget {
         final docs = sortedDocs.take(5).toList();
 
         final pendingCount = docs.where((doc) {
-          final d = doc.data() as Map<String, dynamic>;
-          return (d['status'] ?? 'pending') == 'pending';
+          return (doc['status'] ?? 'pending') == 'pending';
         }).length;
 
         return Padding(
@@ -505,13 +544,10 @@ class _StudentChecksSection extends StatelessWidget {
                 const SizedBox(height: 12),
                 for (final doc in docs)
                   _StudentCheckRow(
-                    data: doc.data() as Map<String, dynamic>,
-                    statusColor: _statusColor(
-                        (doc.data() as Map)['status'] ?? 'pending'),
-                    statusIcon:
-                        _statusIcon((doc.data() as Map)['status'] ?? 'pending'),
-                    statusLabel: _statusLabel(
-                        (doc.data() as Map)['status'] ?? 'pending'),
+                    data: doc,
+                    statusColor: _statusColor(doc['status'] ?? 'pending'),
+                    statusIcon: _statusIcon(doc['status'] ?? 'pending'),
+                    statusLabel: _statusLabel(doc['status'] ?? 'pending'),
                     formatMoney: _formatMoney,
                   ),
                 const SizedBox(height: 4),

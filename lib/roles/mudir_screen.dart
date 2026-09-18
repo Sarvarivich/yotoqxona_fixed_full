@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // SignOut kafolatli ishlashi uchun
 import 'package:yotoqxona/modules/models/tolov_cheklari_screen.dart';
 import '../modules/models/user_model.dart';
@@ -11,6 +10,7 @@ import '../modules/murojaat/murojaatlar_list.dart';
 import '../modules/mudir_arizalar_screen.dart';
 import '../modules/models/complaint_model.dart';
 import '../modules/services/auth_service.dart';
+import '../modules/services/api_service.dart';
 
 // ─── Creative dark palette (admin dizayni bilan bir xil til) ───
 // Mudir profili — Super Admin bilan bir xil ko'rinish va imkoniyatlarga ega,
@@ -489,18 +489,38 @@ class _AppBarIconBtn extends StatelessWidget {
   }
 }
 
+// Kutilayotgan to'lov cheklari soni.
+//
+// Ilgari Firestore snapshots() bilan real vaqtda sanardi. Firebase
+// sozlanmagan platformada (Windows) bu butun menyuni qizil ekranga
+// aylantirardi.
+//
+// Endi Laravel API'dan bir marta yuklanadi. Xato bo'lsa belgi
+// shunchaki ko'rinmaydi - menyu buzilmaydi.
 class _TolovBadgeDot extends StatelessWidget {
   const _TolovBadgeDot();
 
+  Future<int> _kutilayotganlar() async {
+    try {
+      final javob = await ApiService().get('payments');
+      final royxat = javob['data'];
+      if (royxat is! List) return 0;
+
+      return royxat.where((t) {
+        if (t is! Map) return false;
+        return (t['status'] ?? '').toString().toLowerCase() == 'pending';
+      }).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('tolov_cheklari')
-          .where('status', isEqualTo: 'pending')
-          .snapshots(),
+    return FutureBuilder<int>(
+      future: _kutilayotganlar(),
       builder: (context, snap) {
-        final count = snap.data?.docs.length ?? 0;
+        final count = snap.data ?? 0;
         if (count == 0) return const SizedBox(width: 8);
         return Container(
           margin: const EdgeInsets.only(right: 8),

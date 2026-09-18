@@ -177,24 +177,26 @@ class _GirlsRoomsScreenState extends State<GirlsRoomsScreen> {
                   },
                 );
               }),
-              const Divider(height: 1),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                      color: _LC.coral.withOpacity(0.13),
-                      shape: BoxShape.circle),
-                  child: const Icon(Icons.delete_forever_rounded,
-                      color: _LC.coral, size: 20),
+              if (widget.isAdmin) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                        color: _LC.coral.withOpacity(0.13),
+                        shape: BoxShape.circle),
+                    child: const Icon(Icons.delete_forever_rounded,
+                        color: _LC.coral, size: 20),
+                  ),
+                  title: const Text("Xonani o'chirish",
+                      style: TextStyle(
+                          color: _LC.coral, fontWeight: FontWeight.w700)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _confirmDelete(context, provider, room);
+                  },
                 ),
-                title: const Text("Xonani o'chirish",
-                    style: TextStyle(
-                        color: _LC.coral, fontWeight: FontWeight.w700)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _confirmDelete(context, provider, room);
-                },
-              ),
+              ],
               const SizedBox(height: 8),
             ],
           ),

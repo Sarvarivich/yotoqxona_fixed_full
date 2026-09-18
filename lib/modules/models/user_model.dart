@@ -73,7 +73,7 @@ class UserModel {
   /// "101-xona" deb chiqarish uchun [roomNumber] dan foydalaning.
   final String? roomId;
 
-  /// Xona raqami — "101", "203" kabi. Ekranda shu ko'rsatiladi.
+  /// Xona raqami вЂ” "101", "203" kabi. Ekranda shu ko'rsatiladi.
   ///
   /// Laravel javobidagi active_room_assignment.room.room_number dan
   /// olinadi. Eski Firestore'da roomId maydonining o'zida raqam
@@ -222,7 +222,7 @@ class UserModel {
         return 'Universitet yotoqxonasi';
 
       case 'avto_yol':
-        return 'Avto yo‘l yotoqxonasi';
+        return 'Avto yoвЂl yotoqxonasi';
 
       case 'med_college':
         return 'Med kollej yotoqxonasi';
@@ -238,7 +238,7 @@ class UserModel {
           return 'Qizlar yotoqxonasi';
         }
 
-        return 'O‘g‘il bolalar yotoqxonasi';
+        return 'OвЂgвЂil bolalar yotoqxonasi';
     }
   }
 
@@ -385,7 +385,7 @@ class UserModel {
     );
 
     // Eski Firestore: roomId maydonida raqam bo'lishi mumkin.
-    // UUID'da defis bor, raqamda yo'q — shu bilan farqlaymiz.
+    // UUID'da defis bor, raqamda yo'q вЂ” shu bilan farqlaymiz.
     if (activeRoomNumber == null &&
         activeRoomId != null &&
         !activeRoomId.contains('-')) {
@@ -455,9 +455,22 @@ class UserModel {
       'registered_by',
       'registeredBy',
 
+      'additional_data',
+      'additionalData',
       'active_room_assignment',
       'activeRoomAssignment',
     ];
+
+    // Laravel dditional_data ustunida qo'shimcha ma'lumotni
+    // ichma-ich saqlaydi (ijtimoiy imtiyoz, hujjat havolalari
+    // va hokazo). Ekranlar ularni to'g'ridan-to'g'ri o'qishi
+    // uchun bir daraja yuqoriga chiqaramiz.
+    final xomQoshimcha = parsed['additional_data'] ?? parsed['additionalData'];
+    if (xomQoshimcha is Map) {
+      for (final e in xomQoshimcha.entries) {
+        metadata[e.key.toString()] = e.value;
+      }
+    }
 
     metadata.removeWhere(
       (key, value) => knownKeys.contains(key),

@@ -49,8 +49,7 @@ class GTheme {
       prefixIcon: icon != null ? Icon(icon, color: pink, size: 20) : null,
       filled: true,
       fillColor: Colors.white.withOpacity(0.05),
-      contentPadding:
-          const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide(color: white.withOpacity(0.08)),

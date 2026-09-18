@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -58,6 +58,42 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+  /// Ro'yxatdan o'tgan qiz talabalarni yuklaydi.
+  ///
+  /// Ilgari 'foydalanuvchilar' kolleksiyasi real vaqtda tinglanardi.
+  /// Endi Laravel'dan bir marta olinadi.
+  Future<List<Map<String, dynamic>>> _qizTalabalar() async {
+    final natija = <Map<String, dynamic>>[];
+
+    try {
+      int sahifa = 1;
+      int oxirgi = 1;
+
+      do {
+        final javob = await ApiService().get(
+          'students?role=talaba&hostel=girls&per_page=100&page=$sahifa',
+        );
+
+        final royxat = javob['data'];
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is Map) natija.add(Map<String, dynamic>.from(e));
+          }
+        }
+
+        final meta = javob['meta'];
+        oxirgi = meta is Map
+            ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+            : sahifa;
+        sahifa++;
+      } while (sahifa <= oxirgi && sahifa <= 100);
+    } catch (_) {
+      // Xato bo'lsa bo'sh ro'yxat qaytadi.
+    }
+
+    return natija;
+  }
+
     return StreamBuilder<RoomModel?>(
       stream: context.read<GirlsRoomProvider>().watchRoom(widget.room.id),
       initialData: widget.room,
@@ -267,26 +303,22 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
 
                         // ✅ Ikkala manbadan ham (admin qo'shgan +
                         // o'zi ro'yxatdan o'tgan) talabalarni olamiz.
-                        StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('foydalanuvchilar')
-                              .where('role', isEqualTo: 'talaba')
-                              .snapshots(),
+                        FutureBuilder<List<Map<String, dynamic>>>(
+                          future: _qizTalabalar(),
                           builder: (context, usersSnapshot) {
                             final registeredGirls =
-                                (usersSnapshot.data?.docs ?? []).where((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
-                              final rawHostel = (data['hostel'] ?? '')
-                                  .toString()
-                                  .trim()
-                                  .toLowerCase();
-                              return rawHostel == 'girls';
-                            }).map((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
+                                (usersSnapshot.data ?? const [])
+                                    .map((data) {
                               return _AssignableStudent(
-                                id: doc.id,
-                                fullName: (data['fullName'] ?? '').toString(),
-                                phone: (data['phoneNumber'] ?? '').toString(),
+                                id: (data['id'] ?? '').toString(),
+                                fullName: (data['full_name'] ??
+                                        data['fullName'] ??
+                                        '')
+                                    .toString(),
+                                phone: (data['phone'] ??
+                                        data['phoneNumber'] ??
+                                        '')
+                                    .toString(),
                                 fromUsersCollection: true,
                               );
                             }).toList();
@@ -299,23 +331,39 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
                                   return const LinearProgressIndicator();
                                 }
 
+                                // Boshqa xonada turgan talabalar ham
+                                // ko'rsatiladi - ularni shu xonaga
+                                // ko'chirish mumkin. Backend eski
+                                // biriktirishni o'zi yopadi.
                                 final manualGirls = studentSnapshot.data!
-                                    .where((s) => s.roomId.isEmpty)
                                     .map((s) => _AssignableStudent(
                                           id: s.id,
-                                          fullName: s.fullName,
+                                          fullName: s.roomId.isEmpty
+                                              ? s.fullName
+                                              : '${s.fullName}  ·  hozir: '
+                                                  '${s.roomId}-xona',
                                           phone: s.phone,
                                           fromUsersCollection: false,
                                         ))
                                     .toList();
 
-                                final combined = [
+                                // Ikkala manbadan kelgan ro'yxatni
+                                // birlashtiramiz. Takroriy ID bo'lsa
+                                // dropdown yiqiladi, shuning uchun
+                                // noyobligini ta'minlaymiz.
+                                final korilgan = <String>{};
+                                final combined = <_AssignableStudent>[];
+
+                                for (final s in [
                                   ...manualGirls,
                                   ...registeredGirls,
-                                ]
-                                    .where((s) =>
-                                        !liveRoom.studentIds.contains(s.id))
-                                    .toList();
+                                ]) {
+                                  if (liveRoom.studentIds.contains(s.id)) {
+                                    continue;
+                                  }
+                                  if (!korilgan.add(s.id)) continue;
+                                  combined.add(s);
+                                }
 
                                 if (combined.isEmpty) {
                                   return Container(
@@ -343,6 +391,15 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
                                         : null;
 
                                 return DropdownButtonFormField<String>(
+                                  // key ro'yxat o'zgarganda widget'ni qayta
+                                  // yaratadi. Ansiz Form maydoni eski
+                                  // tanlangan qiymatni ichida saqlab
+                                  // qolardi va u ro'yxatdan chiqib
+                                  // ketganda "value bir marta uchramadi"
+                                  // xatosi chiqardi.
+                                  key: ValueKey(
+                                    '${combined.length}_${safeValue ?? ''}',
+                                  ),
                                   initialValue: safeValue,
                                   dropdownColor: GTheme.bgCard,
                                   hint: const Text("Talabalar ro'yxati",
@@ -463,16 +520,13 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
                                   color: GTheme.white.withOpacity(0.5))),
                         )
                       else
-                        StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('foydalanuvchilar')
-                              .where('role', isEqualTo: 'talaba')
-                              .snapshots(),
+                        FutureBuilder<List<Map<String, dynamic>>>(
+                          future: _qizTalabalar(),
                           builder: (context, usersSnap) {
                             final registeredById =
                                 <String, Map<String, dynamic>>{
-                              for (final doc in usersSnap.data?.docs ?? [])
-                                doc.id: doc.data() as Map<String, dynamic>,
+                              for (final d in usersSnap.data ?? const [])
+                                (d['id'] ?? '').toString(): d,
                             };
 
                             return StreamBuilder<List<GirlStudentModel>>(

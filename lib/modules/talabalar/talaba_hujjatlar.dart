@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import '../services/storage_service.dart';
+
+import '../services/api_service.dart';
 
 class TalabaHujjatlar extends StatefulWidget {
   final String studentId;
@@ -17,7 +20,6 @@ class TalabaHujjatlar extends StatefulWidget {
 }
 
 class _TalabaHujjatlarState extends State<TalabaHujjatlar> {
-  final StorageService _storageService = StorageService();
   final ImagePicker _picker = ImagePicker();
 
   final Map<String, String?> _documents = {
@@ -53,20 +55,32 @@ class _TalabaHujjatlarState extends State<TalabaHujjatlar> {
     _loadDocuments();
   }
 
+  /// Talabaning hujjatlarini yuklaydi.
+  ///
+  /// Backend uchta hujjat turini qaytaradi: talaba guvohnomasi,
+  /// to'lov cheki va tibbiy ma'lumotnoma. Ruxsatni o'zi tekshiradi -
+  /// talaba faqat o'zinikini ko'radi.
   Future<void> _loadDocuments() async {
-    DocumentSnapshot doc = await FirebaseFirestore.instance
-        .collection('foydalanuvchilar')
-        .doc(widget.studentId)
-        .get();
+    try {
+      final javob =
+          await ApiService().get('students/${widget.studentId}/documents');
 
-    if (doc.exists) {
-      Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-      setState(() {
-        _documents['student_card'] = data['student_card_url'];
-        _documents['payment_receipt'] = data['payment_receipt_url'];
-        _documents['medical_certificate'] = data['medical_certificate_url'];
-        _isLoading = false;
-      });
+      final d = javob['data'];
+      if (d is Map && mounted) {
+        setState(() {
+          _documents['student_card'] =
+              (d['student_card'] ?? d['student_card_url'])?.toString();
+          _documents['payment_receipt'] =
+              (d['payment_receipt'] ?? d['payment_receipt_url'])?.toString();
+          _documents['medical_certificate'] =
+              (d['medical_certificate'] ?? d['medical_certificate_url'])
+                  ?.toString();
+        });
+      }
+    } catch (e) {
+      debugPrint('Hujjatlarni yuklashda xatolik: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -108,37 +122,62 @@ class _TalabaHujjatlarState extends State<TalabaHujjatlar> {
       if (image != null) {
         setState(() => _isUploading = true);
 
-        File file = File(image.path);
-        String? downloadUrl = await _storageService.uploadDocument(
-          widget.studentId,
-          documentType,
-          file,
+        // Fayl to'g'ridan-to'g'ri Laravel'ga yuboriladi - Firebase
+        // Storage kerak emas. Backend uni saqlaydi va havolasini
+        // qaytaradi.
+        final file = File(image.path);
+        final token = await ApiService.getToken();
+
+        final sorov = http.MultipartRequest(
+          'POST',
+          Uri.parse(
+            '${ApiService.baseUrl}/students/${widget.studentId}/documents',
+          ),
         );
-
-        if (downloadUrl != null) {
-          await FirebaseFirestore.instance
-              .collection('foydalanuvchilar')
-              .doc(widget.studentId)
-              .update({'${documentType}_url': downloadUrl});
-
-          setState(() {
-            _documents[documentType] = downloadUrl;
-            _isUploading = false;
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Hujjat yuklandi"),
-              backgroundColor: Colors.green,
-            ),
-          );
+        sorov.headers['Accept'] = 'application/json';
+        if (token != null) {
+          sorov.headers['Authorization'] = 'Bearer $token';
         }
+        sorov.fields['document_type'] = documentType;
+        sorov.files.add(await http.MultipartFile.fromPath('file', file.path));
+
+        final javob = await http.Response.fromStream(await sorov.send());
+        final tana = jsonDecode(javob.body);
+
+        if (javob.statusCode < 200 || javob.statusCode >= 300) {
+          final xabar = tana is Map && tana['message'] != null
+              ? tana['message'].toString()
+              : "Hujjatni yuklab bo'lmadi.";
+          throw Exception(xabar);
+        }
+
+        // Backend yangilangan havolalar ro'yxatini qaytaradi.
+        String? yangiUrl;
+        if (tana is Map && tana['data'] is Map) {
+          final d = tana['data'] as Map;
+          yangiUrl = (d[documentType] ?? d['${documentType}_url'])?.toString();
+        }
+
+        if (!mounted) return;
+
+        setState(() {
+          if (yangiUrl != null) _documents[documentType] = yangiUrl;
+          _isUploading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Hujjat yuklandi"),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isUploading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Xatolik: $e"),
+          content: Text("Xatolik: ${e.toString().replaceFirst('Exception: ', '')}"),
           backgroundColor: Colors.red,
         ),
       );

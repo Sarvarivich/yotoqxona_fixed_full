@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'user_model.dart';
 
@@ -241,17 +241,70 @@ class _IjtimoiyImtiyozScreenState extends State<IjtimoiyImtiyozScreen> {
     );
   }
 
+  /// Ijtimoiy imtiyozga ega talabalarni yuklaydi.
+  ///
+  /// Laravel'da alohida `hasSocialBenefit` ustuni yo'q - imtiyoz
+  /// ma'lumoti `additional_data` (JSON) ichida saqlanadi. Shuning
+  /// uchun barcha talabalarni olib, mijoz tomonida filtrlaymiz.
+  ///
+  /// detailed=1 kerak: additional_data faqat to'liq javobda keladi.
+  static Future<List<Map<String, dynamic>>> yuklaImtiyozlilar() async {
+    final natija = <Map<String, dynamic>>[];
+
+    try {
+      final api = ApiService();
+      int sahifa = 1;
+      int oxirgi = 1;
+
+      do {
+        final javob = await api.get(
+          'students?role=talaba&per_page=100&detailed=1&page=$sahifa',
+        );
+
+        final royxat = javob['data'];
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is! Map) continue;
+            final d = Map<String, dynamic>.from(e);
+
+            // additional_data ichidagi qiymatlarni yuqoriga chiqaramiz,
+            // ekran ularni to'g'ridan-to'g'ri o'qiydi.
+            final qoshimcha = d['additional_data'] ?? d['additionalData'];
+            if (qoshimcha is Map) {
+              for (final q in qoshimcha.entries) {
+                d[q.key.toString()] = q.value;
+              }
+            }
+
+            final bor = d['hasSocialBenefit'] == true ||
+                d['has_social_benefit'] == true;
+            if (!bor) continue;
+
+            // Ekran eski nomlarni o'qiydi - moslashtiramiz.
+            d['fullName'] ??= d['full_name'];
+            d['phoneNumber'] ??= d['phone'];
+            d['createdAt'] ??= d['created_at'];
+
+            natija.add(d);
+          }
+        }
+
+        final meta = javob['meta'];
+        oxirgi = meta is Map
+            ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+            : sahifa;
+        sahifa++;
+      } while (sahifa <= oxirgi && sahifa <= 100);
+    } catch (e) {
+      debugPrint('Imtiyozlilarni yuklashda xatolik: $e');
+    }
+
+    return natija;
+  }
+
   Widget _buildList() {
-    // ✅ Faqat "talaba" rolidagilarni so'raymiz, so'ng "Ijtimoiy imtiyozga
-    // egaman" deb belgilaganlarini (hasSocialBenefit == true) mahalliy
-    // filtrlaymiz — bu maydon UserModel.additionalData orqali hujjatning
-    // TO'G'RIDAN-TO'G'RI ustida saqlanadi (register.dart / auth_service.dart
-    // ga qarang), shu bois qo'shimcha composite index shart emas.
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .where('role', isEqualTo: UserRole.talaba.name)
-          .snapshots(),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: yuklaImtiyozlilar(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -276,53 +329,45 @@ class _IjtimoiyImtiyozScreenState extends State<IjtimoiyImtiyozScreen> {
           );
         }
 
-        final allDocs = snap.data?.docs ?? [];
+        // Ro'yxat allaqachon imtiyozlilar bo'yicha filtrlangan.
+        final benefitDocs = snap.data ?? const <Map<String, dynamic>>[];
 
-        // 🎗️ Faqat ijtimoiy imtiyozni tanlagan talabalar
-        final benefitDocs = allDocs.where((doc) {
-          final d = doc.data() as Map<String, dynamic>;
-          return d['hasSocialBenefit'] == true;
-        }).toList();
-
-        // 🚻 Tanlangan yotoqxona bo'yicha filtrlaymiz
-        final docs = benefitDocs.where((doc) {
-          final d = doc.data() as Map<String, dynamic>;
+        // Tanlangan yotoqxona bo'yicha filtrlaymiz
+        final docs = benefitDocs.where((d) {
           final hostel = (d['hostel'] ?? '').toString().trim().toLowerCase();
           final normalized = hostel.isEmpty ? 'boys' : hostel;
           return normalized == _selectedHostel;
         }).toList();
 
-        // 🔎 Ism yoki ro'yxatdan o'tgan sana bo'yicha mahalliy qidirish
+        // Sanani ekranda ko'rsatiladigan formatga o'giradi.
+        // Laravel sanalarni ISO matn sifatida qaytaradi.
+        String fmt(dynamic ts) {
+          if (ts == null) return '';
+          final dt = ts is DateTime ? ts : DateTime.tryParse(ts.toString());
+          if (dt == null) return '';
+          final dd = dt.day.toString().padLeft(2, '0');
+          final mm = dt.month.toString().padLeft(2, '0');
+          return '$dd.$mm.${dt.year}';
+        }
+
+        // Ism yoki ro'yxatdan o'tgan sana bo'yicha qidirish
         final filteredDocs = _searchQuery.isEmpty
             ? docs
-            : docs.where((doc) {
-                final d = doc.data() as Map<String, dynamic>;
+            : docs.where((d) {
                 final fullName =
                     (d['fullName'] ?? '').toString().toLowerCase();
                 if (fullName.contains(_searchQuery)) return true;
-
-                String fmt(dynamic ts) {
-                  if (ts == null) return '';
-                  try {
-                    final dt = (ts as dynamic).toDate() as DateTime;
-                    final dd = dt.day.toString().padLeft(2, '0');
-                    final mm = dt.month.toString().padLeft(2, '0');
-                    return '$dd.$mm.${dt.year}';
-                  } catch (_) {
-                    return '';
-                  }
-                }
-
                 return fmt(d['createdAt']).contains(_searchQuery);
               }).toList();
 
         // Eng yangi ro'yxatdan o'tganlar tepada ko'rinsin
         filteredDocs.sort((a, b) {
-          final da = (a.data() as Map<String, dynamic>)['createdAt'];
-          final db = (b.data() as Map<String, dynamic>)['createdAt'];
-          final ta = da is Timestamp ? da.millisecondsSinceEpoch : 0;
-          final tb = db is Timestamp ? db.millisecondsSinceEpoch : 0;
-          return tb.compareTo(ta);
+          final da = DateTime.tryParse((a['createdAt'] ?? '').toString());
+          final db = DateTime.tryParse((b['createdAt'] ?? '').toString());
+          if (da == null && db == null) return 0;
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return db.compareTo(da);
         });
 
         if (filteredDocs.isEmpty) {
@@ -357,9 +402,7 @@ class _IjtimoiyImtiyozScreenState extends State<IjtimoiyImtiyozScreen> {
           padding: const EdgeInsets.all(12),
           itemCount: filteredDocs.length,
           itemBuilder: (context, i) {
-            final doc = filteredDocs[i];
-            final d = doc.data() as Map<String, dynamic>;
-            return _buildBenefitCard(d);
+            return _buildBenefitCard(filteredDocs[i]);
           },
         );
       },
@@ -367,7 +410,8 @@ class _IjtimoiyImtiyozScreenState extends State<IjtimoiyImtiyozScreen> {
   }
 
   Widget _buildBenefitCard(Map<String, dynamic> d) {
-    final studentName = (d['fullName'] ?? "Noma'lum talaba") as String;
+    final studentName =
+        (d['fullName'] ?? d['full_name'] ?? "Noma'lum talaba").toString();
     final benefitType = d['benefitType'] as String?;
     final lostParentType = d['lostParentType'] as String?;
     final deathCertificateUrl = (d['deathCertificateUrl'] ?? '') as String;
@@ -675,13 +719,10 @@ class IjtimoiyImtiyozBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .where('hasSocialBenefit', isEqualTo: true)
-          .snapshots(),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _IjtimoiyImtiyozScreenState.yuklaImtiyozlilar(),
       builder: (context, snap) {
-        final count = snap.data?.docs.length ?? 0;
+        final count = snap.data?.length ?? 0;
         if (count == 0) return const SizedBox.shrink();
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

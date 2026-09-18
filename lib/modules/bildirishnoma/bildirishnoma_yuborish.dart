@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/api_service.dart';
 import '../services/email_service.dart';
 
 class BildirishnomaYuborish extends StatefulWidget {
@@ -27,22 +27,48 @@ class _BildirishnomaYuborishState extends State<BildirishnomaYuborish> {
     _loadStudents();
   }
 
+  final _api = ApiService();
+
+  /// Barcha talabalarni yuklaydi.
+  ///
+  /// Backend bir so'rovda 100 tadan ko'p bermaydi, shuning uchun
+  /// oxirgi sahifagacha aylanamiz.
   Future<void> _loadStudents() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('foydalanuvchilar')
-        .where('role', isEqualTo: 'talaba')
-        .get();
+    final natija = <Map<String, dynamic>>[];
 
-    _students = snapshot.docs.map((doc) {
-      final data = doc.data();
-      return {
-        'id': doc.id,
-        'name': data['fullName'] ?? '',
-        'email': data['email'] ?? '',
-      };
-    }).toList();
+    try {
+      int sahifa = 1;
+      int oxirgi = 1;
 
-    setState(() {});
+      do {
+        final javob = await _api.get(
+          'students?role=talaba&per_page=100&page=$sahifa',
+        );
+
+        final royxat = javob['data'];
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is! Map) continue;
+            natija.add({
+              'id': (e['id'] ?? '').toString(),
+              'name': (e['full_name'] ?? e['fullName'] ?? '').toString(),
+              'email': (e['email'] ?? '').toString(),
+            });
+          }
+        }
+
+        final meta = javob['meta'];
+        oxirgi = meta is Map
+            ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+            : sahifa;
+        sahifa++;
+      } while (sahifa <= oxirgi && sahifa <= 100);
+    } catch (e) {
+      debugPrint('Talabalarni yuklashda xatolik: $e');
+    }
+
+    if (!mounted) return;
+    setState(() => _students = natija);
   }
 
   Future<void> _sendNotification() async {
@@ -127,27 +153,57 @@ class _BildirishnomaYuborishState extends State<BildirishnomaYuborish> {
     }
   }
 
-  // 🔥 SAVE TO FIRESTORE
+  /// Bildirishnomani Laravel'ga saqlaydi.
+  ///
+  /// Backend har bir bildirishnomani aniq foydalanuvchiga
+  /// biriktiradi, shuning uchun tanlangan auditoriya bo'yicha
+  /// birma-bir yuboriladi. `is_read` va `created_at` server
+  /// tomonda avtomatik to'ldiriladi.
   Future<void> _saveToDatabase() async {
-    final users = await FirebaseFirestore.instance.collection('foydalanuvchilar').get();
+    // Kimga yuborilishini aniqlaymiz.
+    final qabul = <String>[];
 
-    for (var user in users.docs) {
-      if (_selectedAudience == 'students' && user['role'] != 'talaba') continue;
-      if (_selectedAudience == 'specific' && user.id != _selectedStudentId) {
-        continue;
+    if (_selectedAudience == 'specific') {
+      if (_selectedStudentId != null && _selectedStudentId!.isNotEmpty) {
+        qabul.add(_selectedStudentId!);
       }
-      if (_selectedAudience == 'all' ||
-          _selectedAudience == 'students' ||
-          user.id == _selectedStudentId) {
-        await FirebaseFirestore.instance.collection('bildirishnomalar').add({
-          'userId': user.id,
-          'title': _titleController.text,
-          'body': _bodyController.text,
+    } else {
+      // 'all' va 'students' - ikkalasi ham talabalarga yuboriladi.
+      // Laravel'da xodimlarga yuborish uchun alohida ro'yxat kerak,
+      // hozircha talabalar bilan cheklanamiz.
+      for (final s in _students) {
+        final id = (s['id'] ?? '').toString();
+        if (id.isNotEmpty) qabul.add(id);
+      }
+    }
+
+    if (qabul.isEmpty) {
+      throw Exception('Bildirishnoma uchun qabul qiluvchi topilmadi.');
+    }
+
+    var xato = 0;
+
+    for (final userId in qabul) {
+      try {
+        await _api.post('notifications', body: {
+          'user_id': userId,
+          'title': _titleController.text.trim(),
+          // Backend 'message' maydonini kutadi ('body' emas).
+          'message': _bodyController.text.trim(),
           'type': _selectedType,
-          'isRead': false,
-          'createdAt': FieldValue.serverTimestamp(),
         });
+      } catch (e) {
+        xato++;
+        debugPrint('Bildirishnoma yuborilmadi ($userId): $e');
       }
+    }
+
+    if (xato > 0 && xato == qabul.length) {
+      throw Exception('Bildirishnoma yuborilmadi.');
+    }
+
+    if (xato > 0) {
+      debugPrint('$xato ta bildirishnoma yuborilmadi.');
     }
   }
 

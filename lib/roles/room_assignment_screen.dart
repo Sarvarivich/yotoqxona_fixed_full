@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../modules/services/api_service.dart';
 import '../modules/models/room_model.dart';
 import '../modules/models/user_model.dart';
 
@@ -20,21 +20,45 @@ class RoomDetailsScreen extends StatefulWidget {
 }
 
 class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
+  final _api = ApiService();
+
+  // MUHIM: Future initState'da yaratiladi. build() ichida yaratilsa,
+  // har bir qayta chizishda yangi so'rov ketardi.
+  late Future<Map<String, dynamic>> _xona;
+
+  @override
+  void initState() {
+    super.initState();
+    _xona = _yukla();
+  }
+
+  Future<Map<String, dynamic>> _yukla() async {
+    try {
+      final javob = await _api.getRoom(widget.roomDocId);
+      final d = javob['data'];
+      return d is Map ? Map<String, dynamic>.from(d) : <String, dynamic>{};
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  Future<void> _qaytaYukla() async {
+    if (!mounted) return;
+    setState(() {
+      _xona = _yukla();
+    });
+    await _xona;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // ⚡ Xona hujjatining o'zini ("xonalar/{roomDocId}") REAL VAQTDA
-    // tinglaymiz. Avval bu yerda faqat `widget.room` (ekranga bir marta,
-    // navigatsiya paytida uzatilgan statik obyekt) ishlatilardi — shu
-    // sababli talaba xonaga biriktirilgandan keyin, "Yashovchi talabalar"
-    // ro'yxati DARHOL yangilanmasdi (chunki studentIds ro'yxati hamon eski
-    // qiymatda qolardi), faqat ekrandan chiqib qayta kirilganda ko'rinardi.
-    // Endi xona hujjati o'zgarishi bilanoq (studentIds, capacity va h.k.)
-    // butun ekran avtomatik qayta chiziladi.
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('xonalar')
-          .doc(widget.roomDocId)
-          .snapshots(),
+    // Xona ma'lumoti Laravel'dan olinadi.
+    //
+    // Ilgari Firestore hujjati real vaqtda tinglanardi va talaba
+    // biriktirilishi bilan ro'yxat o'zi yangilanardi. Endi har bir
+    // o'zgarishdan keyin _qaytaYukla() chaqiriladi.
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _xona,
       builder: (context, roomSnapshot) {
         if (roomSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -42,11 +66,23 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
           );
         }
 
-        final roomData =
-            roomSnapshot.data?.data() as Map<String, dynamic>? ?? {};
+        final roomData = roomSnapshot.data ?? const <String, dynamic>{};
+
+        // Xonadagi talabalar backend javobida keladi.
+        final aktivTalabalar = roomData['active_students'];
+        final talabalar = aktivTalabalar is List
+            ? aktivTalabalar
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+            : const <Map<String, dynamic>>[];
+
         final liveStudentIds =
-            List<String>.from(roomData['studentIds'] ?? widget.room.studentIds);
-        final liveCapacity = (roomData['capacity'] as num?)?.toInt() ??
+            talabalar.map((e) => (e['id'] ?? '').toString()).toList();
+
+        final liveCapacity = int.tryParse(
+              (roomData['capacity'] ?? widget.room.capacity).toString(),
+            ) ??
             (widget.room.capacity > 0 ? widget.room.capacity : 4);
 
         return _RoomAssignmentBody(
@@ -55,6 +91,8 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
           hostel: widget.hostel,
           liveStudentIds: liveStudentIds,
           liveCapacity: liveCapacity,
+          talabalar: talabalar,
+          onChanged: _qaytaYukla,
         );
       },
     );
@@ -68,12 +106,20 @@ class _RoomAssignmentBody extends StatefulWidget {
   final List<String> liveStudentIds;
   final int liveCapacity;
 
+  /// Xonada yashayotgan talabalar (backend javobidan).
+  final List<Map<String, dynamic>> talabalar;
+
+  /// Biriktirish yoki chiqarishdan keyin xonani qayta yuklaydi.
+  final Future<void> Function() onChanged;
+
   const _RoomAssignmentBody({
     required this.widgetRoom,
     required this.roomDocId,
     required this.hostel,
     required this.liveStudentIds,
     required this.liveCapacity,
+    required this.talabalar,
+    required this.onChanged,
   });
 
   @override
@@ -81,6 +127,61 @@ class _RoomAssignmentBody extends StatefulWidget {
 }
 
 class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
+  final _api = ApiService();
+
+  // MUHIM: Future initState'da bir marta yaratiladi.
+  //
+  // Agar u build() ichida yaratilsa, har bir qayta chizishda yangi
+  // so'rov ketardi va ro'yxat doimo o'zgarib turardi - natijada
+  // DropdownButton "value bir marta uchramadi" degan xato berardi.
+  late Future<List<Map<String, dynamic>>> _talabalarFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _talabalarFuture = _barchaTalabalar();
+  }
+
+  /// Xonaga biriktirish uchun talabalar ro'yxatini yuklaydi.
+  ///
+  /// Backend bir so'rovda 100 tadan ko'p bermaydi, shuning uchun
+  /// oxirgi sahifagacha aylanamiz.
+  Future<List<Map<String, dynamic>>> _barchaTalabalar() async {
+    final natija = <Map<String, dynamic>>[];
+
+    try {
+      int sahifa = 1;
+      int oxirgi = 1;
+
+      do {
+        final javob = await _api.get(
+          'students?role=talaba&per_page=100&page=$sahifa',
+        );
+
+        // Backend ba'zan paginate() obyektini qaytaradi - u holda
+        // ro'yxat data ichidagi data da bo'ladi.
+        final xom = javob['data'];
+        final royxat = xom is Map ? xom['data'] : xom;
+
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is Map) natija.add(Map<String, dynamic>.from(e));
+          }
+        }
+
+        final meta = javob['meta'];
+        oxirgi = meta is Map
+            ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+            : sahifa;
+        sahifa++;
+      } while (sahifa <= oxirgi && sahifa <= 100);
+    } catch (e) {
+      debugPrint('Talabalarni yuklashda xatolik: $e');
+    }
+
+    return natija;
+  }
+
   void _showStudentInfo(BuildContext context, UserModel student) {
     final extra = student.additionalData ?? const <String, dynamic>{};
     String value(String key, [String fallback = '—']) {
@@ -188,23 +289,12 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
     final liveStudentIds = widget.liveStudentIds;
     final capacity = widget.liveCapacity;
 
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .where(FieldPath.documentId,
-              whereIn: liveStudentIds.isEmpty ? ['__empty__'] : liveStudentIds)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
-
-        final List<DocumentSnapshot> assignedStudents =
-            snapshot.hasData ? snapshot.data!.docs : [];
+    // Xonadagi talabalar allaqachon yuklangan - qo'shimcha so'rov
+    // kerak emas. Backend /api/rooms/{id} javobida active_students
+    // massivini qaytaradi.
+    {
+      {
+        final assignedStudents = widget.talabalar;
 
         final int currentStudentsCount = assignedStudents.length;
         bool isRoomFull = currentStudentsCount >= capacity;
@@ -345,11 +435,8 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
                         // tanlansa, uni shu xonaga ko'chirish (eski xonadan
                         // avtomatik chiqarib, yangisiga biriktirish) sodir
                         // bo'ladi.
-                        StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('foydalanuvchilar')
-                              .where('role', isEqualTo: 'talaba')
-                              .snapshots(),
+                        FutureBuilder<List<Map<String, dynamic>>>(
+                          future: _talabalarFuture,
                           builder: (context, studentSnapshot) {
                             if (!studentSnapshot.hasData) {
                               return const LinearProgressIndicator();
@@ -378,12 +465,16 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
                             // talabalar chiqadi. Boshqa xonaga o'tkazish
                             // shu ekrandan endi amalga oshirilmaydi.
                             final allStudents =
-                                studentSnapshot.data!.docs.where((doc) {
-                              final data =
-                                  doc.data() as Map<String, dynamic>? ?? {};
-                              final roomId =
-                                  (data['roomId'] ?? '').toString().trim();
-                              if (roomId.isNotEmpty) {
+                                studentSnapshot.data!.where((data) {
+                              // Shu xonada yashayotganlar ro'yxatda
+                              // ko'rsatilmaydi - ular pastdagi
+                              // "Yashovchi talabalar" bo'limida.
+                              //
+                              // Boshqa xonadagilar KO'RSATILADI: ularni
+                              // shu xonaga ko'chirish mumkin, backend
+                              // eski biriktirishni o'zi yopadi.
+                              final id = (data['id'] ?? '').toString();
+                              if (liveStudentIds.contains(id)) {
                                 return false;
                               }
                               final rawHostel = (data['hostel'] ?? '')
@@ -421,8 +512,9 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
                             // Dropdown uchun doim UNIKAL va MAVJUD qiymatlardan
                             // foydalanamiz: Firestore doc.id (student.id emas,
                             // chunki u bo'sh/bir xil bo'lib qolishi mumkin).
-                            final allStudentIds =
-                                allStudents.map((doc) => doc.id).toSet();
+                            final allStudentIds = allStudents
+                                .map((d) => (d['id'] ?? '').toString())
+                                .toSet();
 
                             // Agar tanlangan talaba ro'yxatdan chiqib ketgan
                             // bo'lsa (masalan, Firestore optimistik yozuvi
@@ -437,6 +529,15 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
                                     : null;
 
                             return DropdownButtonFormField<String>(
+                              // key ro'yxat o'zgarganda widget'ni qayta
+                              // yaratadi. Ansiz Form maydoni eski
+                              // tanlangan qiymatni ichida saqlab qolardi
+                              // va u ro'yxatdan chiqib ketganda
+                              // "value bir marta uchramadi" xatosi
+                              // chiqardi.
+                              key: ValueKey(
+                                '${allStudentIds.length}_${safeValue ?? ''}',
+                              ),
                               initialValue: safeValue,
                               hint: const Text("Talabalar ro'yxati"),
                               isExpanded: true,
@@ -454,16 +555,24 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
                                       BorderSide(color: Colors.grey.shade300),
                                 ),
                               ),
-                              items: allStudents.map((doc) {
-                                final student = UserModel.fromJson(
-                                    doc.data() as Map<String, dynamic>);
-                                // Bu ro'yxatga endi faqat xonasi yo'q
-                                // ("bo'sh") talabalar tushadi, shuning
-                                // uchun qo'shimcha "hozir: X-xona" belgisi
-                                // shart emas.
+                              items: allStudents.map((d) {
+                                final student = UserModel.fromJson(d);
+
+                                // Boshqa xonada turgan talaba bo'lsa,
+                                // hozirgi xonasini ham ko'rsatamiz -
+                                // tanlaganda u shu yerga ko'chiriladi.
+                                final hozirgi = student.roomNumber;
+                                final matn = hozirgi != null &&
+                                        hozirgi.trim().isNotEmpty
+                                    ? '${student.fullName}  ·  hozir: $hozirgi-xona'
+                                    : student.fullName;
+
                                 return DropdownMenuItem<String>(
-                                  value: doc.id,
-                                  child: Text(student.fullName),
+                                  value: (d['id'] ?? '').toString(),
+                                  child: Text(
+                                    matn,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 );
                               }).toList(),
                               onChanged: (val) =>
@@ -489,94 +598,45 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
                                 ? null
                                 : () async {
                                     final String studentId = selectedStudentId!;
-                                    final userRef = FirebaseFirestore.instance
-                                        .collection('foydalanuvchilar')
-                                        .doc(studentId);
-                                    final roomRef = FirebaseFirestore.instance
-                                        .collection('xonalar')
-                                        .doc(roomDocId);
 
-                                    // Talaba boshqa xonada turgan bo'lishi
-                                    // mumkin (masalan admin uni oldin
-                                    // boshqa xonaga biriktirgan). Shunday
-                                    // bo'lsa, avval o'sha eski xonadan
-                                    // chiqaramiz — aks holda ikkita xonada
-                                    // bir vaqtda "yashab qolgan" bo'lib,
-                                    // hisob-kitob buziladi.
-                                    final userSnap = await userRef.get();
-                                    final oldRoomId = (userSnap.data())?['roomId']
-                                        as String?;
-
-                                    DocumentSnapshot? oldRoomDoc;
-                                    if (oldRoomId != null &&
-                                        oldRoomId.isNotEmpty &&
-                                        oldRoomId !=
-                                            room.roomNumber.toString()) {
-                                      final oldRoomQuery =
-                                          await FirebaseFirestore.instance
-                                              .collection('xonalar')
-                                              .where('roomNumber',
-                                                  isEqualTo:
-                                                      int.tryParse(oldRoomId) ??
-                                                          oldRoomId)
-                                              .limit(1)
-                                              .get();
-                                      if (oldRoomQuery.docs.isNotEmpty) {
-                                        oldRoomDoc = oldRoomQuery.docs.first;
-                                      }
+                                    // Biriktirish Laravel tomonida bitta
+                                    // tranzaksiyada bajariladi: eski
+                                    // biriktirish yopiladi, yangisi
+                                    // ochiladi, xona bandligi va holati
+                                    // yangilanadi. Sig'im tekshiruvi ham
+                                    // o'sha yerda - ikki mudir bir vaqtda
+                                    // oxirgi joyni band qilsa, ikkinchisi
+                                    // xato oladi.
+                                    try {
+                                      await _api.assignStudentToRoom(
+                                        studentId: studentId,
+                                        roomId: roomDocId,
+                                      );
+                                    } catch (e) {
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "Biriktirib bo'lmadi: "
+                                            "${e.toString().replaceFirst('Exception: ', '')}",
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                      return;
                                     }
 
-                                    final batch =
-                                        FirebaseFirestore.instance.batch();
+                                    await widget.onChanged();
 
-                                    if (oldRoomDoc != null) {
-                                      final oldRoomData = oldRoomDoc.data()
-                                          as Map<String, dynamic>;
-                                      final oldOccupants =
-                                          (oldRoomData['currentOccupants']
-                                                      as num?)
-                                                  ?.toInt() ??
-                                              0;
-                                      final oldCapacity =
-                                          (oldRoomData['capacity'] as num?)
-                                                  ?.toInt() ??
-                                              0;
-                                      final newOldOccupants = (oldOccupants - 1)
-                                          .clamp(0, oldOccupants);
-                                      batch.update(oldRoomDoc.reference, {
-                                        'currentOccupants': newOldOccupants,
-                                        'studentIds':
-                                            FieldValue.arrayRemove([studentId]),
-                                        'status': newOldOccupants < oldCapacity
-                                            ? RoomStatus.empty.name
-                                            : oldRoomData['status'],
-                                      });
-                                    }
+                                    if (!context.mounted) return;
 
-                                    batch.update(userRef, {
-                                      'roomId': room.roomNumber.toString(),
-                                      'hostel': hostel,
-                                    });
-                                    batch.update(roomRef, {
-                                      'currentOccupants':
-                                          FieldValue.increment(1),
-                                      'studentIds':
-                                          FieldValue.arrayUnion([studentId]),
-                                      // 🛠️ Xona to'lib qolsa, holatini ham
-                                      // avtomatik "band" (occupied) qilib
-                                      // qo'yamiz — aks holda statistika va
-                                      // Dashboard'da xona "bo'sh" bo'lib
-                                      // ko'rinib qolaveradi.
-                                      'status':
-                                          (currentStudentsCount + 1) >= capacity
-                                              ? RoomStatus.occupied.name
-                                              : room.status.name,
-                                    });
-
-                                    await batch.commit();
-
+                                    // Tanlovni tozalaymiz va talabalar
+                                    // ro'yxatini qayta yuklaymiz - endi
+                                    // bu talabaning xonasi o'zgargan.
                                     setState(() {
                                       selectedStudentId = null;
+                                      _talabalarFuture = _barchaTalabalar();
                                     });
 
                                     ScaffoldMessenger.of(context).showSnackBar(
@@ -625,8 +685,7 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
                           itemCount: assignedStudents.length,
                           itemBuilder: (context, index) {
                             final studentDoc = assignedStudents[index];
-                            final student = UserModel.fromJson(
-                                studentDoc.data() as Map<String, dynamic>);
+                            final student = UserModel.fromJson(studentDoc);
 
                             return Card(
                               margin: const EdgeInsets.symmetric(vertical: 4),
@@ -651,55 +710,66 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
                                   icon: const Icon(Icons.logout,
                                       color: Colors.red),
                                   onPressed: () async {
-                                    final String studentId = studentDoc.id;
+                                    final String studentId =
+                                        (studentDoc['id'] ?? '').toString();
 
-                                    final batch =
-                                        FirebaseFirestore.instance.batch();
-                                    final userRef = FirebaseFirestore.instance
-                                        .collection('foydalanuvchilar')
-                                        .doc(studentId);
-                                    final roomRef = FirebaseFirestore.instance
-                                        .collection('xonalar')
-                                        .doc(roomDocId);
+                                    // Chiqarish ham Laravel tomonida
+                                    // bitta tranzaksiyada bajariladi:
+                                    // biriktirish yopiladi, xona
+                                    // bandligi va holati yangilanadi.
+                                    try {
+                                      // Avval biriktirish yozuvini
+                                      // topamiz - uni bekor qilish uchun
+                                      // ID kerak.
+                                      String? aid;
+                                      final biriktirishlar =
+                                          await _api.getRoomAssignments();
 
-                                    batch.update(userRef, {
-                                      // ⚠️ Avval bu yerda `''` (bo'sh
-                                      // satr) yozilar edi. Ammo xona
-                                      // biriktirish ekrani
-                                      // (modules/xonalar/xona_taqsimlash.dart)
-                                      // "bo'sh" talabalarni topish uchun
-                                      // `roomId == null` shartidan
-                                      // foydalanadi — shu sababli bo'sh
-                                      // satr yozilgan talaba xato
-                                      // ravishda "hali ham biriktirilgan"
-                                      // deb ko'rinib, biriktirish
-                                      // ro'yxatida umuman chiqmay qolar
-                                      // edi. Endi `null` yoziladi — bu
-                                      // ilova bo'ylab "xonasi yo'q"
-                                      // holatining yagona standarti.
-                                      'roomId': null,
-                                      'hostel': hostel,
+                                      for (final b in biriktirishlar) {
+                                        if (b is! Map) continue;
+                                        final d =
+                                            Map<String, dynamic>.from(b);
+                                        if ((d['room_id'] ?? '').toString() !=
+                                            roomDocId) {
+                                          continue;
+                                        }
+                                        if ((d['student_id'] ?? '')
+                                                .toString() !=
+                                            studentId) {
+                                          continue;
+                                        }
+                                        aid = (d['id'] ?? '').toString();
+                                        break;
+                                      }
+
+                                      if (aid == null || aid.isEmpty) {
+                                        throw Exception(
+                                            'Biriktirish yozuvi topilmadi.');
+                                      }
+
+                                      await _api.unassignRoomStudent(aid);
+                                    } catch (e) {
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            "Chiqarib bo'lmadi: "
+                                            "${e.toString().replaceFirst('Exception: ', '')}",
+                                          ),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    await widget.onChanged();
+
+                                    if (!context.mounted) return;
+
+                                    setState(() {
+                                      _talabalarFuture = _barchaTalabalar();
                                     });
-                                    batch.update(roomRef, {
-                                      'currentOccupants':
-                                          FieldValue.increment(-1),
-                                      'studentIds':
-                                          FieldValue.arrayRemove([studentId]),
-                                      // 🛠️ Agar xona avtomatik "band" deb
-                                      // belgilangan bo'lsa-yu, endi joy
-                                      // bo'shagan bo'lsa — holatini "bo'sh"ga
-                                      // qaytaramiz. Admin qo'lda "Ta'mirlashda"
-                                      // yoki "To'lov kutilmoqda" deb qo'ygan
-                                      // bo'lsa, bu holatlarga tegmaymiz.
-                                      'status':
-                                          (room.status == RoomStatus.occupied &&
-                                                  (currentStudentsCount - 1) <
-                                                      capacity)
-                                              ? RoomStatus.empty.name
-                                              : room.status.name,
-                                    });
-
-                                    await batch.commit();
 
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
@@ -720,7 +790,7 @@ class _RoomAssignmentBodyState extends State<_RoomAssignmentBody> {
             ),
           ),
         );
-      },
-    );
+      }
+    }
   }
 }

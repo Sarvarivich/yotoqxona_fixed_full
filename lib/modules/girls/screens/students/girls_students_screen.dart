@@ -11,7 +11,8 @@ import 'girl_student_profile_screen.dart';
 // ─── GirlsStudentsScreen: Qizlar yotoqxonasi talabalari ro'yxati.
 // Qidiruv, qo'shish, tahrirlash, o'chirish va profilga o'tish.
 class GirlsStudentsScreen extends StatefulWidget {
-  const GirlsStudentsScreen({super.key});
+  final bool canDelete;
+  const GirlsStudentsScreen({super.key, this.canDelete = true});
 
   @override
   State<GirlsStudentsScreen> createState() => _GirlsStudentsScreenState();
@@ -99,6 +100,7 @@ class _GirlsStudentsScreenState extends State<GirlsStudentsScreen> {
                       final s = students[index];
                       return _StudentTile(
                         student: s,
+                        canDelete: widget.canDelete,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -153,12 +155,14 @@ class _GirlsStudentsScreenState extends State<GirlsStudentsScreen> {
 
 class _StudentTile extends StatelessWidget {
   final GirlStudentModel student;
+  final bool canDelete;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _StudentTile({
     required this.student,
+    this.canDelete = true,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
@@ -167,16 +171,16 @@ class _StudentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: GTheme.cardDecoration(),
       child: ListTile(
         onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: GTheme.pink.withOpacity(0.15),
-          backgroundImage:
-              student.imageUrl.isNotEmpty ? NetworkImage(student.imageUrl) : null,
+          backgroundColor: GTheme.pink.withOpacity(0.18),
+          backgroundImage: student.imageUrl.isNotEmpty
+              ? NetworkImage(student.imageUrl)
+              : null,
           child: student.imageUrl.isEmpty
               ? Text(
                   student.fullName.isNotEmpty
@@ -206,15 +210,16 @@ class _StudentTile extends StatelessWidget {
             if (v == 'edit') onEdit();
             if (v == 'delete') onDelete();
           },
-          itemBuilder: (ctx) => const [
-            PopupMenuItem(
+          itemBuilder: (ctx) => [
+            const PopupMenuItem(
               value: 'edit',
               child: Text('Tahrirlash', style: TextStyle(color: Colors.white)),
             ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Text("O'chirish", style: TextStyle(color: GTheme.red)),
-            ),
+            if (canDelete)
+              const PopupMenuItem(
+                value: 'delete',
+                child: Text("O'chirish", style: TextStyle(color: GTheme.red)),
+              ),
           ],
         ),
       ),

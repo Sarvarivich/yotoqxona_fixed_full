@@ -13,6 +13,7 @@ import '../reports/girls_reports_screen.dart';
 import '../rooms/girls_rooms_screen.dart';
 import '../settings/girls_settings_screen.dart';
 import '../students/girls_students_screen.dart';
+import 'girls_role_management_screen.dart';
 import '../../../models/ijtimoiy_imtiyozlar_sahifasi.dart';
  // 🎗️ Ijtimoiy imtiyoz hujjatlari sahifasi
 // ─── GirlsAdminScreen: Qizlar yotoqxonasi uchun yagona boshqaruv
@@ -39,6 +40,10 @@ class _GirlsAdminScreenState extends State<GirlsAdminScreen> {
   int _selectedIndex = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  bool get _isAdminOrSuper =>
+      widget.user.role == UserRole.superAdmin ||
+      widget.user.role == UserRole.admin;
+
   List<_NavItem> get _navItems => [
         const _NavItem('Bosh sahifa', Icons.space_dashboard_rounded,
             Icons.space_dashboard_outlined, GTheme.pink),
@@ -56,6 +61,9 @@ class _GirlsAdminScreenState extends State<GirlsAdminScreen> {
             Icons.bar_chart_outlined, GTheme.violet),
         const _NavItem('Ijtimoiy imtiyozlar', Icons.volunteer_activism_rounded,
             Icons.volunteer_activism_outlined, GTheme.coral),
+        if (_isAdminOrSuper)
+          const _NavItem('Rol boshqaruvi', Icons.admin_panel_settings_rounded,
+              Icons.admin_panel_settings_outlined, GTheme.violet),
         const _NavItem(
             'Sozlamalar', Icons.tune_rounded, Icons.tune_outlined, GTheme.pink),
       ];
@@ -65,13 +73,20 @@ class _GirlsAdminScreenState extends State<GirlsAdminScreen> {
           user: widget.user,
           onNavigate: (i) => setState(() => _selectedIndex = i),
         ),
-        const GirlsStudentsScreen(),
-        const GirlsRoomsScreen(),
+        GirlsStudentsScreen(canDelete: _isAdminOrSuper),
+        GirlsRoomsScreen(isAdmin: _isAdminOrSuper),
         GirlsComplaintsScreen(currentUser: widget.user),
         GirlsNotificationsScreen(currentUser: widget.user),
         GirlsPaymentsScreen(currentUser: widget.user),
         const GirlsReportsScreen(),
         const IjtimoiyImtiyozlarSahifasi(initialHostel: 'girls'),
+        if (_isAdminOrSuper)
+          GirlsRoleManagementTab(
+            scaffoldKey: _scaffoldKey,
+            isSuperAdmin: widget.user.isSuperAdmin,
+            canDelete: _isAdminOrSuper,
+            currentUserId: widget.user.id,
+          ),
         GirlsSettingsScreen(user: widget.user),
       ];
 

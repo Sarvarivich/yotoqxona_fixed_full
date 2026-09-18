@@ -1,9 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:yotoqxona/roles/room_assignment_screen.dart';
 import 'models/room_model.dart';
 import 'package:flutter/material.dart';
 
 import '../modules/models/user_model.dart';
+import 'services/api_service.dart';
 
 /// Mudir uchun faqat yotoqxona ARIZA yuborgan talabalarni boshqarish ekrani.
 /// Dizayn foydalanuvchi yuborgan "Umumiy ro'yxat" skrinshotidagi yengil,
@@ -18,7 +18,94 @@ class MudirArizalarScreen extends StatefulWidget {
 }
 
 class _MudirArizalarScreenState extends State<MudirArizalarScreen> {
-  final _firestore = FirebaseFirestore.instance;
+  final _api = ApiService();
+
+  // Arizalar Laravel API'dan bir marta yuklanadi.
+  //
+  // MUHIM: Future initState'da yaratiladi. build() ichida yaratilsa,
+  // har bir qidiruv harfida yangi so'rov ketardi.
+  late Future<List<Map<String, dynamic>>> _arizalar;
+
+
+  /// Ariza yuborgan talabalarni yuklaydi.
+  ///
+  /// Ilgari `foydalanuvchilar` kolleksiyasidan applicationStep >= 2
+  /// bo'lganlar olinardi. Laravel'da arizalar alohida jadvalda
+  /// (`applications`), va backend mudirni o'z binosi bilan o'zi
+  /// cheklaydi.
+  ///
+  /// Ekrandagi filtrlar talaba shaklidagi map kutadi, shuning uchun
+  /// ariza va talaba ma'lumotini bitta mapga birlashtiramiz.
+  Future<List<Map<String, dynamic>>> _yukla() async {
+    final natija = <Map<String, dynamic>>[];
+
+    int sahifa = 1;
+    int oxirgi = 1;
+
+    do {
+      final javob = await _api.get('applications?per_page=100&page=$sahifa');
+
+      final royxat = javob['data'];
+      // Backend paginate() qaytaradi: data ichida yana data bo'lishi
+      // mumkin.
+      final elementlar = royxat is Map ? royxat['data'] : royxat;
+
+      if (elementlar is List) {
+        for (final e in elementlar) {
+          if (e is! Map) continue;
+          final ariza = Map<String, dynamic>.from(e);
+
+          final talaba = ariza['user'] ?? ariza['student'];
+          if (talaba is! Map) continue;
+
+          final birlashgan = Map<String, dynamic>.from(talaba);
+
+          // Ekran eski (Firestore) nomlarni o'qiydi - moslashtiramiz.
+          birlashgan['fullName'] =
+              talaba['full_name'] ?? talaba['fullName'] ?? '';
+          birlashgan['phoneNumber'] =
+              talaba['phone'] ?? talaba['phoneNumber'] ?? '';
+          birlashgan['studentId'] =
+              talaba['group_name'] ?? talaba['studentId'] ?? '';
+
+          // Ariza maydonlari
+          birlashgan['applicationId'] = ariza['id'];
+          birlashgan['applicationStep'] =
+              (ariza['step'] as num?)?.toInt() ?? 2;
+          birlashgan['applicationStatus'] =
+              (ariza['status'] ?? 'submitted').toString();
+          birlashgan['hasSocialBenefit'] =
+              ariza['has_social_benefit'] == true;
+          birlashgan['benefitType'] = ariza['benefit_type'];
+          birlashgan['hostelAssignmentType'] = ariza['assignment_type'];
+          birlashgan['assignmentMessage'] = ariza['assignment_message'];
+
+          // Bino: talabaning hostel maydoni
+          birlashgan['hostel'] =
+              (talaba['hostel'] ?? 'boys').toString().toLowerCase();
+          birlashgan['role'] = 'talaba';
+
+          natija.add(birlashgan);
+        }
+      }
+
+      final meta = javob['meta'] ?? (royxat is Map ? royxat : null);
+      oxirgi = meta is Map
+          ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
+          : sahifa;
+      sahifa++;
+    } while (sahifa <= oxirgi && sahifa <= 100);
+
+    return natija;
+  }
+
+  Future<void> _qaytaYukla() async {
+    if (!mounted) return;
+    setState(() {
+      _arizalar = _yukla();
+    });
+    await _arizalar;
+  }
   final _search = TextEditingController();
 
   String _category = 'all'; // all | social | ordinary
@@ -27,6 +114,7 @@ class _MudirArizalarScreenState extends State<MudirArizalarScreen> {
   @override
   void initState() {
     super.initState();
+    _arizalar = _yukla();
     _search.addListener(() {
       if (mounted) setState(() => _query = _search.text.trim().toLowerCase());
     });
@@ -94,6 +182,7 @@ class _MudirArizalarScreenState extends State<MudirArizalarScreen> {
       builder: (_) => _AssignmentDialog(
         student: user,
         genderHostel: _studentGenderHostel(data),
+        applicationId: (data['applicationId'] ?? '').toString(),
       ),
     );
   }
@@ -102,30 +191,43 @@ class _MudirArizalarScreenState extends State<MudirArizalarScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _C.bg,
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _firestore
-            .collection('foydalanuvchilar')
-            .where('role', isEqualTo: 'talaba')
-            .where('hostel', isEqualTo: widget.user.hostel ?? 'boys')
-            .where('applicationStep', isGreaterThanOrEqualTo: 2)
-            .snapshots(),
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _arizalar,
         builder: (context, snap) {
+          if (snap.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'Arizalarni yuklashda xatolik:\n${snap.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: _C.muted),
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: _qaytaYukla,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Qayta urinish'),
+                  ),
+                ],
+              ),
+            );
+          }
+
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs =
-              snap.data?.docs.where((d) => _matches(d.data())).toList() ?? [];
-          final socialCount = snap.data?.docs.where((d) {
-                final x = d.data();
-                return _matchesWithCategory(x, 'social');
-              }).length ??
-              0;
-          final ordinaryCount = snap.data?.docs.where((d) {
-                final x = d.data();
-                return _matchesWithCategory(x, 'ordinary');
-              }).length ??
-              0;
+          final hammasi = snap.data ?? const <Map<String, dynamic>>[];
+
+          final docs = hammasi.where((d) => _matches(d)).toList();
+          final socialCount =
+              hammasi.where((x) => _matchesWithCategory(x, 'social')).length;
+          final ordinaryCount =
+              hammasi.where((x) => _matchesWithCategory(x, 'ordinary')).length;
 
           return CustomScrollView(
             slivers: [
@@ -156,11 +258,11 @@ class _MudirArizalarScreenState extends State<MudirArizalarScreen> {
                                   : 1;
                           const gap = 14.0;
 
-                          // Fixed balandlik ishlatilmaydi. Har bir karta o‘z
+                          // Fixed balandlik ishlatilmaydi. Har bir karta oРІР‚Вz
                           // kontentining tabiiy balandligini oladi. Shu sababli
-                          // oynani istalgan o‘lchamga o‘zgartirganda ham
+                          // oynani istalgan oРІР‚Вlchamga oРІР‚Вzgartirganda ham
                           // BOTTOM/RIGHT OVERFLOW yuz bermaydi va desktopda
-                          // karta ostida ortiqcha bo‘sh joy qolmaydi.
+                          // karta ostida ortiqcha boРІР‚Вsh joy qolmaydi.
                           return SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.only(bottom: 24),
@@ -174,9 +276,11 @@ class _MudirArizalarScreenState extends State<MudirArizalarScreen> {
                                   return SizedBox(
                                     width: cardWidth,
                                     child: _ApplicantCard(
-                                      data: doc.data(),
-                                      onAssign: () =>
-                                          _openAssignment(doc.data(), doc.id),
+                                      data: doc,
+                                      onAssign: () => _openAssignment(
+                                        doc,
+                                        (doc['id'] ?? '').toString(),
+                                      ),
                                     ),
                                   );
                                 }).toList(),
@@ -393,7 +497,7 @@ class _ApplicantCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = (data['fullName'] ?? 'Nomaʼlum talaba').toString();
+    final name = (data['fullName'] ?? 'NomaРљСlum talaba').toString();
     final social = data['hasSocialBenefit'] == true;
     final assigned = (data['roomId'] ?? '').toString().isNotEmpty ||
         (data['hostelAssignmentType'] ?? '').toString().isNotEmpty;
@@ -475,14 +579,14 @@ class _ApplicantCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 _Meta(Icons.phone_outlined,
-                    (data['phoneNumber'] ?? '—').toString()),
+                    (data['phoneNumber'] ?? 'РІР‚вЂќ').toString()),
                 _Meta(
-                    Icons.badge_outlined, (data['jshshir'] ?? '—').toString()),
+                    Icons.badge_outlined, (data['jshshir'] ?? 'РІР‚вЂќ').toString()),
                 _Meta(
                   Icons.school_outlined,
-                  "${data['faculty'] ?? 'Fakultet'} / ${data['course'] ?? '—'}-kurs",
+                  "${data['faculty'] ?? 'Fakultet'} / ${data['course'] ?? 'РІР‚вЂќ'}-kurs",
                 ),
-                _Meta(Icons.map_outlined, (data['region'] ?? '—').toString()),
+                _Meta(Icons.map_outlined, (data['region'] ?? 'РІР‚вЂќ').toString()),
               ],
             ),
             const SizedBox(height: 9),
@@ -501,7 +605,7 @@ class _ApplicantCard extends StatelessWidget {
                     assigned
                         ? ((data['hostelAssignmentType'] ?? '').toString() ==
                                 'rental'
-                            ? 'Ijara bo‘yicha ajratilgan'
+                            ? 'Ijara boРІР‚Вyicha ajratilgan'
                             : 'Yotoqxonaga biriktirilgan')
                         : 'Biriktirilmagan',
                     style: TextStyle(
@@ -515,7 +619,7 @@ class _ApplicantCard extends StatelessWidget {
                   onPressed: onAssign,
                   icon:
                       const Icon(Icons.assignment_turned_in_outlined, size: 16),
-                  label: Text(assigned ? 'Ko‘rish' : 'Biriktirish'),
+                  label: Text(assigned ? 'KoРІР‚Вrish' : 'Biriktirish'),
                 ),
               ],
             ),
@@ -530,9 +634,14 @@ class _AssignmentDialog extends StatefulWidget {
   final UserModel student;
   final String genderHostel;
 
+  /// Talabaning arizasi ID'si. Xona biriktirilgach ariza holati shu
+  /// ID bo'yicha yangilanadi (PUT /api/applications/{id}).
+  final String applicationId;
+
   const _AssignmentDialog({
     required this.student,
     required this.genderHostel,
+    required this.applicationId,
   });
 
   @override
@@ -540,9 +649,12 @@ class _AssignmentDialog extends StatefulWidget {
 }
 
 class _AssignmentDialogState extends State<_AssignmentDialog> {
+  final _api = ApiService();
+
+
   static const types = [
     ('university', 'Universitet yotoqxonasi', Icons.account_balance_rounded),
-    ('avto_yol', 'Avto yo‘l yotoqxonasi', Icons.directions_car_rounded),
+    ('avto_yol', 'Avto yoРІР‚Вl yotoqxonasi', Icons.directions_car_rounded),
     ('medical', 'Med kollej yotoqxonasi', Icons.local_hospital_rounded),
     (
       'navoi_object',
@@ -554,7 +666,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
 
   String? _selectedType;
   bool _loading = false;
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _rooms = [];
+  List<Map<String, dynamic>> _rooms = [];
   String? _error;
 
   Future<void> _selectType(String type) async {
@@ -568,33 +680,36 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
 
     setState(() => _loading = true);
     try {
-      // Avvalgi variant butun `xonalar` kolleksiyasini o'qib,
-      // keyin Flutter ichida hostelType bo'yicha filter qilardi.
-      // Productionda bu kerakmas readlarni ko'paytiradi. Endi faqat
-      // tanlangan turga mos canonical/legacy qiymatlar olinadi.
-      final aliases = _hostelTypeAliases(type);
-      final snap = await FirebaseFirestore.instance
-          .collection('xonalar')
-          .where('hostelType', whereIn: aliases)
-          .get();
+      // Xonalar Laravel API'dan olinadi.
+      //
+      // Bino turi xonaning `hostel_type` ustunida saqlanadi. Tanlangan
+      // turga tegishli BARCHA xonalar ko'rsatiladi - bo'sh, qisman
+      // band va to'lganlari ham. Jins bo'yicha filtr qilinmaydi:
+      // mudir umumiy holatni ko'rishi kerak.
+      final xom = await _api.getRooms();
 
-      final filtered = snap.docs.where((doc) {
-        final d = doc.data();
-        final raw = (d['hostelType'] ?? '').toString().trim().toLowerCase();
+      final filtered = <Map<String, dynamic>>[];
+      for (final x in xom) {
+        if (x is! Map) continue;
+        final d = Map<String, dynamic>.from(x);
+
+        final raw = (d['hostel_type'] ?? d['hostelType'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
         final roomType = _normalizeRoomType(raw);
-        // Tanlangan yotoqxona turiga tegishli BARCHA xonalarni ko'rsatamiz.
-        // Muhim: bu oynada jins bo'yicha filtr qilinmaydi. Mudir tanlangan
-        // yotoqxonaning umumiy xona holatini ko'rishi kerak:
-        // bo'sh, qisman band va to'liq band xonalarning barchasi chiqadi.
-        // Xona ustiga bosilganda uning ichidagi talabalar ko'rsatiladi.
-        return roomType == type;
-      }).toList();
+        if (roomType != type) continue;
 
-      filtered.sort((a, b) {
-        final ao = (a.data()['currentOccupants'] as num?)?.toInt() ?? 0;
-        final bo = (b.data()['currentOccupants'] as num?)?.toInt() ?? 0;
-        return ao.compareTo(bo);
-      });
+        filtered.add(d);
+      }
+
+      int bandlik(Map<String, dynamic> d) =>
+          int.tryParse(
+            (d['current_occupants'] ?? d['currentOccupants'] ?? 0).toString(),
+          ) ??
+          0;
+
+      filtered.sort((a, b) => bandlik(a).compareTo(bandlik(b)));
 
       if (mounted) setState(() => _rooms = filtered);
     } catch (e) {
@@ -657,17 +772,14 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
   }
 
   String _roomStatusText(int occupants, int capacity) {
-    if (capacity <= 0) return 'Sig‘im belgilanmagan';
-    if (occupants >= capacity) return 'To‘liq band';
-    if (occupants <= 0) return 'Bo‘sh';
+    if (capacity <= 0) return 'SigРІР‚Вim belgilanmagan';
+    if (occupants >= capacity) return 'ToРІР‚Вliq band';
+    if (occupants <= 0) return 'BoРІР‚Вsh';
     return 'Qisman band';
   }
 
-  Future<void> _openRoomDetails(
-      QueryDocumentSnapshot<Map<String, dynamic>> roomDoc) async {
-    final data = Map<String, dynamic>.from(roomDoc.data());
-    data['id'] =
-        data['id']?.toString().isNotEmpty == true ? data['id'] : roomDoc.id;
+  Future<void> _openRoomDetails(Map<String, dynamic> roomDoc) async {
+    final data = Map<String, dynamic>.from(roomDoc);
 
     final room = RoomModel.fromJson(data);
     if (!mounted) return;
@@ -675,7 +787,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => RoomDetailsScreen(
-          roomDocId: roomDoc.id,
+          roomDocId: (roomDoc['id'] ?? '').toString(),
           room: room,
           hostel: room.hostel,
         ),
@@ -689,52 +801,41 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
 
   String _typeName(String type) => types.firstWhere((e) => e.$1 == type).$2;
 
-  Future<void> _assignToRoom(
-      QueryDocumentSnapshot<Map<String, dynamic>> roomDoc) async {
+  Future<void> _assignToRoom(Map<String, dynamic> roomDoc) async {
     setState(() => _loading = true);
     try {
-      final roomRef = roomDoc.reference;
-      final userRef = FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .doc(widget.student.id);
+      final roomId = (roomDoc['id'] ?? '').toString();
+      if (roomId.isEmpty) {
+        throw StateError('Xona ID topilmadi.');
+      }
 
-      await FirebaseFirestore.instance.runTransaction((tx) async {
-        final roomSnap = await tx.get(roomRef);
-        final userSnap = await tx.get(userRef);
-        final room = roomSnap.data() ?? {};
-        final capacity = (room['capacity'] as num?)?.toInt() ?? 4;
-        final occupants = (room['currentOccupants'] as num?)?.toInt() ?? 0;
-        final ids = List<String>.from(room['studentIds'] ?? const []);
+      // Biriktirish Laravel tomonida bitta tranzaksiyada bajariladi:
+      // eski biriktirish yopiladi, yangisi ochiladi, xona bandligi
+      // yangilanadi. Sig'im tekshiruvi ham o'sha yerda - ikki mudir
+      // bir vaqtda oxirgi joyni band qilsa, ikkinchisi xato oladi.
+      await _api.assignStudentToRoom(
+        studentId: widget.student.id,
+        roomId: roomId,
+      );
 
-        if (occupants >= capacity || ids.contains(widget.student.id)) {
-          throw StateError('Bu xona hozir bo‘sh emas.');
-        }
-
+      // Ariza holatini 3-bosqichga ("xona ajratildi") o'tkazamiz.
+      final arizaId = widget.applicationId;
+      if (arizaId.isNotEmpty) {
         final assignment = _typeName(_selectedType!);
-        final studentGenderHostel = widget.genderHostel;
-        tx.update(roomRef, {
-          'currentOccupants': occupants + 1,
-          'studentIds': FieldValue.arrayUnion([widget.student.id]),
-          'status': occupants + 1 >= capacity ? 'occupied' : 'empty',
-          'hostelType': _selectedType,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-
-        tx.update(userRef, {
-          'roomId': (room['roomNumber'] ?? '').toString(),
-          'hostel': studentGenderHostel,
-          'hostelAssignmentType':
-              _selectedType == 'medical' ? 'med_college' : _selectedType,
-          'assignmentMessage': '${assignment}ga biriktirildingiz.',
-          'applicationStep': 3,
-          'applicationStatus': 'assigned',
-          'assignedAt': FieldValue.serverTimestamp(),
-        });
-
-        // `assignment` o'zgaruvchisi transaction ichida foydalanuvchi xabarini
-        // tushunarli qilish uchun yaratilgan.
-        if (assignment.isEmpty) throw StateError('Yotoqxona turi tanlanmadi.');
-      });
+        try {
+          await _api.put('applications/$arizaId', body: {
+            'status': 'assigned',
+            'step': 3,
+            'room_id': roomId,
+            'assignment_type':
+                _selectedType == 'medical' ? 'med_college' : _selectedType,
+            'assignment_message': '${assignment}ga biriktirildingiz.',
+          });
+        } catch (e) {
+          // Xona biriktirildi, faqat ariza holati yangilanmadi.
+          debugPrint('Ariza holatini yangilashda xatolik: $e');
+        }
+      }
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -758,7 +859,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
     if (!mounted) return;
 
     final name =
-        (data['fullName'] ?? data['name'] ?? 'Noma’lum talaba').toString();
+        (data['fullName'] ?? data['name'] ?? 'NomaРІР‚в„ўlum talaba').toString();
     final phone = (data['phoneNumber'] ?? data['phone'] ?? '-').toString();
     final studentId = (data['studentId'] ?? data['jshshir'] ?? '-').toString();
     final faculty = (data['faculty'] ?? '-').toString();
@@ -790,7 +891,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
               _detailRow(Icons.menu_book_outlined, 'Kurs', course),
               _detailRow(Icons.map_outlined, 'Viloyat', region),
               if (message.trim().isNotEmpty)
-                _detailRow(Icons.info_outline, 'Ma’lumot', message),
+                _detailRow(Icons.info_outline, 'MaРІР‚в„ўlumot', message),
               _detailRow(
                   Icons.home_work_outlined, 'Turi', 'Ijara uchun ajratilgan'),
             ],
@@ -833,27 +934,81 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
     );
   }
 
+  /// Ijara varianti tanlangan talabalarni yuklaydi.
+  ///
+  /// Laravel'da bu arizalar jadvalidagi assignment_type = 'rental'
+  /// yozuvlar. Ekran talaba shaklidagi map kutadi, shuning uchun
+  /// ariza va talaba ma'lumotini birlashtiramiz.
+  Future<List<Map<String, dynamic>>> _ijaradagilar() async {
+    final natija = <Map<String, dynamic>>[];
+
+    try {
+      final javob = await _api.get('applications?per_page=100');
+      final royxat = javob['data'];
+      final elementlar = royxat is Map ? royxat['data'] : royxat;
+
+      if (elementlar is List) {
+        for (final e in elementlar) {
+          if (e is! Map) continue;
+          final ariza = Map<String, dynamic>.from(e);
+
+          if ((ariza['assignment_type'] ?? '').toString() != 'rental') {
+            continue;
+          }
+
+          final holat = (ariza['status'] ?? '').toString();
+          if (holat.isNotEmpty &&
+              holat != 'assigned' &&
+              holat != 'completed') {
+            continue;
+          }
+
+          final talaba = ariza['user'] ?? ariza['student'];
+          if (talaba is! Map) continue;
+
+          final birlashgan = Map<String, dynamic>.from(talaba);
+          birlashgan['fullName'] =
+              talaba['full_name'] ?? talaba['fullName'] ?? '';
+          birlashgan['phoneNumber'] =
+              talaba['phone'] ?? talaba['phoneNumber'] ?? '';
+          birlashgan['studentId'] =
+              talaba['group_name'] ?? talaba['studentId'] ?? '';
+          birlashgan['assignmentMessage'] = ariza['assignment_message'];
+          birlashgan['applicationStatus'] = holat;
+
+          natija.add(birlashgan);
+        }
+      }
+    } catch (e) {
+      debugPrint('Ijaradagilarni yuklashda xatolik: $e');
+    }
+
+    return natija;
+  }
+
   Future<void> _assignRental() async {
     setState(() => _loading = true);
     try {
-      await FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .doc(widget.student.id)
-          .update({
-        'roomId': FieldValue.delete(),
-        'hostelAssignmentType': 'rental',
-        'assignmentMessage':
-            'To‘liq ma’lumot olish uchun Yoshlar bilan ishlash departamentiga murojaat qiling.',
-        'applicationStep': 3,
-        'applicationStatus': 'assigned',
-        'assignedAt': FieldValue.serverTimestamp(),
+      // Ijara - xona biriktirilmaydi, faqat ariza holati o'zgaradi.
+      final arizaId = widget.applicationId;
+      if (arizaId.isEmpty) {
+        throw StateError('Ariza topilmadi.');
+      }
+
+      await _api.put('applications/$arizaId', body: {
+        'status': 'assigned',
+        'step': 3,
+        'assignment_type': 'rental',
+        'assignment_message':
+            "To'liq ma'lumot olish uchun Yoshlar bilan ishlash "
+            "departamentiga murojaat qiling.",
       });
 
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Talabaga ijara bo‘yicha yotoqxona ajratildi.'),
+          content: Text('Talabaga ijara boРІР‚Вyicha yotoqxona ajratildi.'),
           backgroundColor: Colors.green,
         ),
       );
@@ -872,7 +1027,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
     final values = await showDialog<List<int>>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Yangi xona qo‘shish'),
+        title: const Text('Yangi xona qoРІР‚Вshish'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -884,12 +1039,12 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
             TextField(
               controller: capacityCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Sig‘imi'),
+              decoration: const InputDecoration(labelText: 'SigРІР‚Вimi'),
             ),
             TextField(
               controller: priceCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Oylik to‘lov'),
+              decoration: const InputDecoration(labelText: 'Oylik toРІР‚Вlov'),
             ),
           ],
         ),
@@ -906,7 +1061,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                 Navigator.pop(ctx, [n, c, p]);
               }
             },
-            child: const Text('Qo‘shish'),
+            child: const Text('QoРІР‚Вshish'),
           ),
         ],
       ),
@@ -920,45 +1075,55 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
 
     setState(() => _loading = true);
     try {
-      final roomRef = FirebaseFirestore.instance.collection('xonalar').doc();
-      await roomRef.set({
-        'id': roomRef.id,
-        'roomNumber': values[0],
+      // Xona Laravel'da yaratiladi, keyin talaba unga biriktiriladi.
+      // Ikki alohida so'rov, lekin har biri server tomonda
+      // tranzaksiyada bajariladi.
+      final javob = await _api.createRoom({
+        'room_number': values[0].toString(),
         'floor': 1,
         'capacity': values[1],
-        'currentOccupants': 1,
-        'status': values[1] <= 1 ? 'occupied' : 'empty',
         'hostel': widget.genderHostel,
-        'hostelType': _selectedType,
+        'hostel_type': _selectedType,
+        'price_per_month': values[2].toDouble(),
+        'status': 'empty',
         'amenities': <String>[],
-        'facilities': <String>[],
-        'studentIds': [widget.student.id],
-        'pricePerMonth': values[2].toDouble(),
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'notes': 'Ariza bo‘yicha yangi yaratilgan xona',
+        'notes': "Ariza bo'yicha yangi yaratilgan xona",
       });
 
-      await FirebaseFirestore.instance
-          .collection('foydalanuvchilar')
-          .doc(widget.student.id)
-          .update({
-        'roomId': values[0].toString(),
-        'hostel': widget.genderHostel,
-        'hostelAssignmentType':
-            _selectedType == 'medical' ? 'med_college' : _selectedType,
-        'assignmentMessage': '${_typeName(_selectedType!)}ga biriktirildingiz.',
-        'applicationStep': 3,
-        'applicationStatus': 'assigned',
-        'assignedAt': FieldValue.serverTimestamp(),
-      });
+      final yangiXona = javob['data'];
+      final roomId = yangiXona is Map ? (yangiXona['id'] ?? '').toString() : '';
+      if (roomId.isEmpty) {
+        throw StateError('Yangi xona ID si olinmadi.');
+      }
+
+      await _api.assignStudentToRoom(
+        studentId: widget.student.id,
+        roomId: roomId,
+      );
+
+      final arizaId = widget.applicationId;
+      if (arizaId.isNotEmpty) {
+        try {
+          await _api.put('applications/$arizaId', body: {
+            'status': 'assigned',
+            'step': 3,
+            'room_id': roomId,
+            'assignment_type':
+                _selectedType == 'medical' ? 'med_college' : _selectedType,
+            'assignment_message':
+                '${_typeName(_selectedType!)}ga biriktirildingiz.',
+          });
+        } catch (e) {
+          debugPrint('Ariza holatini yangilashda xatolik: $e');
+        }
+      }
 
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content:
-                Text('№${values[0]} xona yaratildi va talaba biriktirildi.')),
+                Text('РІвЂћвЂ“${values[0]} xona yaratildi va talaba biriktirildi.')),
       );
     } catch (e) {
       if (mounted) setState(() => _error = 'Xona yaratishda xatolik: $e');
@@ -1006,7 +1171,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                 fontSize: 17, fontWeight: FontWeight.w800)),
                         Text(
                           assigned
-                              ? 'Biriktirishni ko‘rish/o‘zgartirish'
+                              ? 'Biriktirishni koРІР‚Вrish/oРІР‚Вzgartirish'
                               : 'Yotoqxona turini tanlang',
                           style: const TextStyle(color: _C.muted, fontSize: 12),
                         ),
@@ -1048,16 +1213,18 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
               const SizedBox(height: 16),
               if (_selectedType == 'rental')
                 Expanded(
-                  child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: FirebaseFirestore.instance
-                        .collection('foydalanuvchilar')
-                        .where('hostelAssignmentType', isEqualTo: 'rental')
-                        .snapshots(),
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
+                    // Ijara varianti tanlangan talabalar.
+                    //
+                    // Laravel'da bu ariza jadvalidagi
+                    // assignment_type = 'rental' yozuvlar.
+                    future: _ijaradagilar(),
                     builder: (context, snapshot) {
                       if (snapshot.hasError) {
                         return Center(
                           child: Text(
-                            'Ijara bo‘yicha talabalarni olishda xatolik: ${snapshot.error}',
+                            "Ijara bo'yicha talabalarni olishda xatolik: "
+                            "${snapshot.error}",
                             textAlign: TextAlign.center,
                             style: const TextStyle(
                                 color: Colors.red, fontSize: 12),
@@ -1068,17 +1235,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                         return const Center(child: CircularProgressIndicator());
                       }
 
-                      final docs = snapshot.data?.docs ?? [];
-                      final students = docs.where((doc) {
-                        final d = doc.data();
-                        final role = (d['role'] ?? 'talaba').toString();
-                        final status =
-                            (d['applicationStatus'] ?? '').toString();
-                        return role == 'talaba' &&
-                            (status.isEmpty ||
-                                status == 'assigned' ||
-                                status == 'completed');
-                      }).toList();
+                      final students = snapshot.data ?? const [];
 
                       if (students.isEmpty) {
                         return Center(
@@ -1096,7 +1253,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                     size: 42, color: _C.muted),
                                 SizedBox(height: 10),
                                 Text(
-                                  'Ijara uchun biriktirilgan talabalar yo‘q',
+                                  'Ijara uchun biriktirilgan talabalar yoРІР‚Вq',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: _C.ink,
@@ -1105,7 +1262,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                 ),
                                 SizedBox(height: 5),
                                 Text(
-                                  'Ijara varianti tanlangan talabalar shu yerda ko‘rinadi.',
+                                  'Ijara varianti tanlangan talabalar shu yerda koРІР‚Вrinadi.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: _C.muted,
@@ -1123,20 +1280,19 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                         itemCount: students.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (context, index) {
-                          final doc = students[index];
-                          final d = doc.data();
+                          final d = students[index];
                           final name =
-                              (d['fullName'] ?? d['name'] ?? 'Noma’lum talaba')
+                              (d['fullName'] ?? d['name'] ?? 'NomaРІР‚в„ўlum talaba')
                                   .toString();
                           final phone = (d['phoneNumber'] ??
                                   d['phone'] ??
-                                  'Telefon ko‘rsatilmagan')
+                                  'Telefon koРІР‚Вrsatilmagan')
                               .toString();
                           final faculty =
-                              (d['faculty'] ?? 'Fakultet ko‘rsatilmagan')
+                              (d['faculty'] ?? 'Fakultet koРІР‚Вrsatilmagan')
                                   .toString();
                           final region =
-                              (d['region'] ?? 'Viloyat ko‘rsatilmagan')
+                              (d['region'] ?? 'Viloyat koРІР‚Вrsatilmagan')
                                   .toString();
                           final social = (d['socialStatus'] ??
                                   d['socialCategory'] ??
@@ -1145,7 +1301,10 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
 
                           return InkWell(
                             borderRadius: BorderRadius.circular(16),
-                            onTap: () => _showRentalStudentDetails(d, doc.id),
+                            onTap: () => _showRentalStudentDetails(
+                              d,
+                              (d['id'] ?? '').toString(),
+                            ),
                             child: Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
@@ -1194,7 +1353,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          '$faculty • $region',
+                                          '$faculty РІР‚Сћ $region',
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
@@ -1243,7 +1402,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 8),
                               itemBuilder: (_, i) {
-                                final d = _rooms[i].data();
+                                final d = _rooms[i];
                                 final roomNo = d['roomNumber'] ?? '-';
                                 final occ =
                                     (d['currentOccupants'] as num?)?.toInt() ??
@@ -1296,7 +1455,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                '№$roomNo-xona',
+                                                'РІвЂћвЂ“$roomNo-xona',
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.w800,
                                                   color: _C.ink,
@@ -1304,7 +1463,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                               ),
                                               const SizedBox(height: 3),
                                               Text(
-                                                '$occ/$cap kishi • $status',
+                                                '$occ/$cap kishi РІР‚Сћ $status',
                                                 style: TextStyle(
                                                   color: full
                                                       ? _C.coral
@@ -1316,7 +1475,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                                 ),
                                               ),
                                               Text(
-                                                'Xonani bosib yashovchi talabalarni ko‘ring',
+                                                'Xonani bosib yashovchi talabalarni koРІР‚Вring',
                                                 style: const TextStyle(
                                                   color: _C.muted,
                                                   fontSize: 11,
@@ -1329,7 +1488,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                           const Padding(
                                             padding: EdgeInsets.only(right: 4),
                                             child: Text(
-                                              'To‘liq',
+                                              'ToРІР‚Вliq',
                                               style: TextStyle(
                                                 color: _C.coral,
                                                 fontWeight: FontWeight.w800,
@@ -1407,12 +1566,12 @@ class _EmptyRooms extends StatelessWidget {
                   size: 40, color: _C.muted),
               const SizedBox(height: 10),
               const Text(
-                'Bo‘sh xona topilmadi',
+                'BoРІР‚Вsh xona topilmadi',
                 style: TextStyle(fontWeight: FontWeight.w800, color: _C.ink),
               ),
               const SizedBox(height: 5),
               const Text(
-                'Barcha xonalar to‘la. Yangi xona qo‘shib, talabani shu xonaga biriktirishingiz mumkin.',
+                'Barcha xonalar toРІР‚Вla. Yangi xona qoРІР‚Вshib, talabani shu xonaga biriktirishingiz mumkin.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: _C.muted, fontSize: 12.5),
               ),
@@ -1420,7 +1579,7 @@ class _EmptyRooms extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onCreate,
                 icon: const Icon(Icons.add_home_work_rounded),
-                label: const Text('Yangi xona qo‘shish'),
+                label: const Text('Yangi xona qoРІР‚Вshish'),
               ),
             ],
           ),

@@ -1,4 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum GirlsPaymentStatus {
   paid("To'landi"),
@@ -64,8 +63,8 @@ class GirlsPaymentModel {
       'receiptUrl': receiptUrl,
       'receiptPath': receiptPath,
       'createdBy': createdBy,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'paidAt': paidAt != null ? Timestamp.fromDate(paidAt!) : null,
+      'createdAt': createdAt.toIso8601String(),
+      'paidAt': paidAt?.toIso8601String(),
     };
   }
 
@@ -89,12 +88,11 @@ class GirlsPaymentModel {
       receiptUrl: json['receiptUrl'] as String?,
       receiptPath: json['receiptPath'] as String?,
       createdBy: json['createdBy'] as String? ?? '',
-      createdAt: json['createdAt'] != null
-          ? (json['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
-      paidAt: json['paidAt'] != null
-          ? (json['paidAt'] as Timestamp).toDate()
-          : null,
+      // Laravel sanalarni ISO matn sifatida qaytaradi.
+      createdAt:
+          DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
+              DateTime.now(),
+      paidAt: DateTime.tryParse((json['paidAt'] ?? '').toString()),
     );
   }
 

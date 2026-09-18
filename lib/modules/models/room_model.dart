@@ -1,8 +1,8 @@
 enum RoomStatus {
-  empty('Bo‘sh'),
+  empty('BoвЂsh'),
   occupied('Band'),
-  paymentPending('To‘lov kutilmoqda'),
-  renovation('Ta’mirlashda');
+  paymentPending('ToвЂlov kutilmoqda'),
+  renovation('TaвЂ™mirlashda');
 
   final String displayName;
 
@@ -134,6 +134,30 @@ class RoomModel {
     return 'boys';
   }
 
+  /// Xonada yashayotgan talabalarning ID royxati.
+  ///
+  /// Laravel active_students massivini qaytaradi - har biri
+  /// toliq talaba obyekti. Eski Firestore esa faqat ID larni
+  /// studentIds massivida saqlardi. Ikkalasi ham qollanadi.
+  static List<String> _talabaIdlari(Map<String, dynamic> json) {
+    final aktiv = json['active_students'] ?? json['activeStudents'];
+    if (aktiv is List) {
+      final natija = <String>[];
+      for (final t in aktiv) {
+        if (t is Map && t['id'] != null) {
+          natija.add(t['id'].toString());
+        } else if (t is String && t.isNotEmpty) {
+          natija.add(t);
+        }
+      }
+      if (natija.isNotEmpty) return natija;
+    }
+
+    return _stringList(
+      json['student_ids'] ?? json['studentIds'] ?? json['occupants'],
+    );
+  }
+
   factory RoomModel.fromJson(Map<String, dynamic> json) {
     return RoomModel(
       id: _stringValue(
@@ -178,11 +202,7 @@ class RoomModel {
             json['facilities'],
       ),
 
-      studentIds: _stringList(
-        json['student_ids'] ??
-            json['studentIds'] ??
-            json['occupants'],
-      ),
+      studentIds: _talabaIdlari(json),
 
       pricePerMonth: _doubleValue(
         json['price_per_month'] ??

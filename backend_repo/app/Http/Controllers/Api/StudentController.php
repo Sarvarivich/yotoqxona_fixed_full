@@ -15,7 +15,7 @@ class StudentController extends Controller
     /**
      * Tahrirlashda ruxsat etilgan maydonlar.
      *
-     * MUHIM: 'role' va 'is_active' bu ro'yxatda ATAYLAB yo'q — ular
+     * MUHIM: 'role' va 'is_active' bu ro'yxatda ATAYLAB yo'q вЂ” ular
      * alohida tekshiruvdan keyin qo'shiladi. Ilgari bu metod
      * $request->except(['password']) bilan barcha maydonni ko'r-ko'rona
      * yozardi, shuning uchun mudir {"role":"superAdmin"} yuborib o'zini
@@ -51,7 +51,7 @@ class StudentController extends Controller
      * Talabalar va foydalanuvchilar ro'yxati.
      *
      * Mudir faqat o'z binosidagi foydalanuvchilarni ko'radi.
-     * Javobda shaxsiy maydonlar (JSHSHIR, pasport, manzil) yo'q —
+     * Javobda shaxsiy maydonlar (JSHSHIR, pasport, manzil) yo'q вЂ”
      * ular faqat show() da, UserResource orqali beriladi.
      */
     public function index(Request $request)
@@ -65,7 +65,7 @@ class StudentController extends Controller
             ], 403);
         }
 
-        // ?detailed=1 вЂ” to'liq ma'lumot (Excel eksporti uchun).
+        // ?detailed=1 РІР‚вЂќ to'liq ma'lumot (Excel eksporti uchun).
         // Bu endpoint faqat xodimlarga ochiq, shuning uchun to'liq
         // ma'lumot berish xavfsiz. Oddiy ro'yxat esa yengil
         // UserListResource bilan qaytadi.
@@ -81,6 +81,17 @@ class StudentController extends Controller
         // barchani ko'rishi kerak, admin va superAdmin uchun cheklov yo'q.
         if ($user->role === 'mudir' && !empty($user->hostel)) {
             $query->where('hostel', $user->hostel);
+        }
+
+        // Mudir faqat talabalarni koradi.
+        //
+        // Xodimlar royxati (admin, boshqa mudirlar, moliyachi)
+        // unga kerak emas va ularning shaxsiy malumotlari
+        // ortiqcha ochilmasligi kerak. Admin va superAdmin uchun
+        // cheklov yoq - ularga rol boshqaruvi uchun kerak.
+        $korayotgan = $request->user();
+        if ($korayotgan && $korayotgan->role === 'mudir') {
+            $query->where('role', 'talaba');
         }
 
         if ($request->filled('role')) {
@@ -117,7 +128,7 @@ class StudentController extends Controller
 
         $query->orderBy('full_name', 'asc');
 
-        // per_page berilsa — to'liq sahifalangan javob (meta bilan).
+        // per_page berilsa вЂ” to'liq sahifalangan javob (meta bilan).
         if ($request->filled('per_page')) {
             $perPage = min(max($request->integer('per_page'), 1), 100);
             $sahifa = $query->paginate($perPage);
@@ -136,7 +147,7 @@ class StudentController extends Controller
             ]);
         }
 
-        // per_page berilmasa — eski shakl (oddiy massiv), lekin cheklangan.
+        // per_page berilmasa вЂ” eski shakl (oddiy massiv), lekin cheklangan.
         $jami = (clone $query)->count();
         $royxat = $query->limit(self::CHEKSIZ_SORAGANDA_LIMIT)->get();
 
@@ -309,11 +320,11 @@ class StudentController extends Controller
         }
 
         // Faqat ruxsat etilgan maydonlar olinadi. Bu yerda 'role',
-        // 'is_active' va 'password' YO'Q — ular quyida alohida
+        // 'is_active' va 'password' YO'Q вЂ” ular quyida alohida
         // tekshiruvdan o'tadi.
         $data = $request->only(self::TAHRIRLASH_MUMKIN);
 
-        // Rolni o'zgartirish — faqat superAdmin.
+        // Rolni o'zgartirish вЂ” faqat superAdmin.
         if ($request->filled('role') && $request->role !== $user->role) {
             if ($actor->cannot('changeRole', User::class)) {
                 return response()->json([

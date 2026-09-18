@@ -1,94 +1,145 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/room_model.dart';
+import '../../services/api_service.dart';
 
-// ─── GirlsRoomService: Qizlar yotoqxonasi xonalari uchun.
-// ⚠️ MUHIM: bolalar (superAdmin/admin) tomonida "Xonalar" bo'limi
-// (XonalarList) FAQAT 'xonalar' Firestore to'plamini o'qiydi va
-// hujjatlardagi 'hostel' maydoni bo'yicha ("boys" / "girls") filtrlaydi.
-// Avval bu servis alohida 'girls_rooms' to'plamiga yozar edi — shu sabab
-// qizlar bo'limida yaratilgan yangi xonalar 'xonalar' to'plamida umuman
-// bo'lmagani uchun superAdmin ekranida (XonalarList) ko'rinmas edi.
-// Muammoni tuzatish uchun bu servis ham xuddi shu umumiy 'xonalar'
-// to'plamidan foydalanadi, faqat har doim hostel:'girls' bilan yozadi
-// va o'qishda ham shu maydon bo'yicha filtrlaydi — shunda ikkala ekran
-// (superAdmin va qizlar admin paneli) bir xil ma'lumotni ko'radi.
+// ─── GirlsRoomService: Qizlar yotoqxonasi xonalari ─────────────────
+//
+// Ma'lumot Laravel API'dan olinadi: GET /api/rooms
+//
+// Laravel'da qizlar uchun alohida jadval yo'q — hamma xona `rooms`
+// da, bino esa `hostel_type` ustunida ('boys' / 'girls'). Shu sabab
+// bu servis umumiy endpointdan o'qiydi va faqat girls xonalarini
+// qaytaradi. Superadmin ekrani (XonalarList) ham xuddi shu manbadan
+// o'qigani uchun ikkala ekran bir xil ma'lumotni ko'radi.
+//
+// DIQQAT: metodlar hamon `Stream` qaytaradi — ekranlar
+// `StreamBuilder` bilan yozilgan va ularga tegilmaydi. Lekin endi
+// bu bir martalik oqim: ma'lumot ekran ochilganda yuklanadi, real
+// vaqtda o'z-o'zidan yangilanmaydi.
 class GirlsRoomService {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final ApiService _api = ApiService();
 
-  CollectionReference<Map<String, dynamic>> get _collection =>
-      _db.collection('xonalar');
+  /// Xona qaysi binoga tegishli ekanini aniqlaydi.
+  ///
+  /// Bino uch joyda bo'lishi mumkin: `hostel_type` ustunida,
+  /// bog'langan `hostel` obyektining `code` maydonida, yoki uning
+  /// nomida.
+  String _bino(Map<String, dynamic> d) {
+    var bino = (d['hostel_type'] ?? '').toString().trim().toLowerCase();
 
-  Stream<List<RoomModel>> getRooms() {
-    // Umumiy 'xonalar' to'plamida hostel bo'yicha filtrlaymiz (client
-    // tomonda), shunda o'g'il bolalar xonalari bu yerda ko'rinmaydi va
-    // orderBy bilan indeks talab qilinmaydi.
-    return _collection.orderBy('roomNumber').snapshots().map((snap) {
-      return snap.docs
-          .map((doc) {
-            final data = Map<String, dynamic>.from(doc.data());
-            data['id'] = doc.id;
-            return RoomModel.fromJson(data);
-          })
-          .where((room) =>
-              (room.hostel.isEmpty ? 'boys' : room.hostel.toLowerCase()) ==
-              'girls')
-          .toList();
-    });
+    if (bino.isEmpty || bino.length > 10) {
+      final h = d['hostel'];
+      if (h is Map) {
+        bino = (h['code'] ?? '').toString().trim().toLowerCase();
+        if (bino.isEmpty) {
+          final nom = (h['name'] ?? '').toString().toLowerCase();
+          bino = nom.contains('qiz') ? 'girls' : 'boys';
+        }
+      } else if (h != null) {
+        bino = h.toString().trim().toLowerCase();
+      }
+    }
+
+    return bino.isEmpty ? 'boys' : bino;
   }
+
+  Future<List<RoomModel>> _yukla() async {
+    final xom = await _api.getRooms();
+    final natija = <RoomModel>[];
+
+    for (final x in xom) {
+      if (x is! Map) continue;
+      final d = Map<String, dynamic>.from(x);
+      if (_bino(d) != 'girls') continue;
+
+      try {
+        natija.add(RoomModel.fromJson(d));
+      } catch (_) {
+        // Buzuq yozuv butun ro'yxatni to'xtatmasin.
+      }
+    }
+
+    natija.sort((a, b) => a.roomNumber.compareTo(b.roomNumber));
+    return natija;
+  }
+
+  Stream<List<RoomModel>> getRooms() => Stream.fromFuture(_yukla());
 
   Future<RoomModel?> getRoomById(String id) async {
-    final doc = await _collection.doc(id).get();
-    if (!doc.exists) return null;
-    final data = Map<String, dynamic>.from(doc.data() ?? {});
-    data['id'] = doc.id;
-    return RoomModel.fromJson(data);
+    try {
+      final javob = await _api.getRoom(id);
+      final d = javob['data'];
+      if (d is! Map) return null;
+      return RoomModel.fromJson(Map<String, dynamic>.from(d));
+    } catch (_) {
+      return null;
+    }
   }
 
-  /// Bitta xonani real vaqtda kuzatish — talaba biriktirilgach/olib
-  /// tashlangach ekran avtomatik yangilanadi.
-  Stream<RoomModel?> watchRoom(String id) {
-    return _collection.doc(id).snapshots().map((doc) {
-      if (!doc.exists) return null;
-      final data = Map<String, dynamic>.from(doc.data() ?? {});
-      data['id'] = doc.id;
-      return RoomModel.fromJson(data);
-    });
-  }
+  /// Bitta xonani kuzatish.
+  ///
+  /// Ilgari Firestore snapshots() bilan real vaqtda edi. Endi bir
+  /// martalik: ekran ochilganda yuklanadi.
+  Stream<RoomModel?> watchRoom(String id) =>
+      Stream.fromFuture(getRoomById(id));
 
   Future<void> addRoom(RoomModel room) async {
-    final data = room.toJson();
-    data['hostel'] = 'girls';
-    data.remove('id');
-    await _collection.add(data);
+    await _api.createRoom({
+      'room_number': room.roomNumber.toString(),
+      'floor': room.floor,
+      'capacity': room.capacity,
+      'current_occupants': room.currentOccupants,
+      'status': room.status.name,
+      'hostel': 'girls',
+      'hostel_type': 'girls',
+      'price_per_month': room.pricePerMonth,
+      'amenities': room.amenities,
+    });
   }
 
   Future<void> updateRoom(RoomModel room) async {
-    final data = room.toJson();
-    data['hostel'] = 'girls';
-    data.remove('id');
-    data['updatedAt'] = Timestamp.now();
-    await _collection.doc(room.id).update(data);
+    await _api.updateRoom(room.id, {
+      'room_number': room.roomNumber.toString(),
+      'floor': room.floor,
+      'capacity': room.capacity,
+      'status': room.status.name,
+      'hostel': 'girls',
+      'hostel_type': 'girls',
+      'price_per_month': room.pricePerMonth,
+      'amenities': room.amenities,
+    });
   }
 
   Future<void> deleteRoom(String id) async {
-    await _collection.doc(id).delete();
+    await _api.deleteRoom(id);
   }
 
+  /// Talabani xonaga biriktiradi.
+  ///
+  /// Ilgari `studentIds` massivi va `currentOccupants` qo'lda
+  /// yangilanardi. Laravel buni bitta tranzaksiyada bajaradi va
+  /// sig'imni ham o'zi tekshiradi.
   Future<void> addStudentToRoom(String roomId, String studentId) async {
-    await _collection.doc(roomId).update({
-      'studentIds': FieldValue.arrayUnion([studentId]),
-    });
-    final doc = await _collection.doc(roomId).get();
-    final list = List<String>.from(doc.data()?['studentIds'] ?? []);
-    await _collection.doc(roomId).update({'currentOccupants': list.length});
+    await _api.assignStudentToRoom(studentId: studentId, roomId: roomId);
   }
 
+  /// Talabani xonadan chiqaradi.
+  ///
+  /// Biriktirish yozuvini topib, uni bekor qilamiz.
   Future<void> removeStudentFromRoom(String roomId, String studentId) async {
-    await _collection.doc(roomId).update({
-      'studentIds': FieldValue.arrayRemove([studentId]),
-    });
-    final doc = await _collection.doc(roomId).get();
-    final list = List<String>.from(doc.data()?['studentIds'] ?? []);
-    await _collection.doc(roomId).update({'currentOccupants': list.length});
+    final biriktirishlar = await _api.getRoomAssignments();
+
+    for (final b in biriktirishlar) {
+      if (b is! Map) continue;
+      final d = Map<String, dynamic>.from(b);
+
+      if ((d['room_id'] ?? '').toString() != roomId) continue;
+      if ((d['student_id'] ?? '').toString() != studentId) continue;
+
+      final id = (d['id'] ?? '').toString();
+      if (id.isEmpty) continue;
+
+      await _api.unassignRoomStudent(id);
+      return;
+    }
   }
 }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../services/api_service.dart';
 
 import '../../theme/girls_theme.dart';
 import '../../../../roles/admin_add_user_screen.dart';
@@ -18,10 +18,15 @@ import '../../../../roles/admin_add_user_screen.dart';
 class GirlsRoleManagementTab extends StatefulWidget {
   final GlobalKey<ScaffoldState> scaffoldKey;
   final bool isSuperAdmin;
+  final bool canDelete;
+  final String? currentUserId;
+
   const GirlsRoleManagementTab({
     super.key,
     required this.scaffoldKey,
     required this.isSuperAdmin,
+    this.canDelete = true,
+    this.currentUserId,
   });
 
   @override
@@ -34,12 +39,22 @@ class _GirlsRoleManagementTabState extends State<GirlsRoleManagementTab> {
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  String _hostelFilter = 'all'; // all | girls | boys
 
   List<Map<String, dynamic>> get _filteredUsers {
-    if (_searchQuery.isEmpty) return _users;
+    var list = _users;
+    if (_hostelFilter != 'all') {
+      list = list.where((user) {
+        final h = (user['hostel'] ?? 'boys').toString().toLowerCase();
+        return h == _hostelFilter;
+      }).toList();
+    }
+    if (_searchQuery.isEmpty) return list;
     final query = _searchQuery.toLowerCase();
-    return _users.where((user) {
-      final fullName = (user['fullName'] ?? '').toString().toLowerCase();
+    return list.where((user) {
+      final fullName = ((user['full_name'] ?? user['fullName']) ?? '')
+          .toString()
+          .toLowerCase();
       final email = (user['email'] ?? '').toString().toLowerCase();
       return fullName.contains(query) || email.contains(query);
     }).toList();
@@ -64,17 +79,22 @@ class _GirlsRoleManagementTabState extends State<GirlsRoleManagementTab> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      // ✅ 'foydalanuvchilar' — boys va girls uchun yagona to'plam,
-      // shuning uchun bu yerda ham ro'yxatdan o'tgan BARCHA talaba va
-      // hodimlar (ikkala yotoqxonadan ham) ko'rinadi.
-      QuerySnapshot snapshot =
-          await FirebaseFirestore.instance.collection('foydalanuvchilar').get();
+      // Laravel'da boys va girls yagona `users` jadvalida, shuning
+      // uchun bu yerda ikkala yotoqxonadagi barcha talaba va xodim
+      // ko'rinadi. Backend ruxsatni o'zi tekshiradi.
+      //
+      // per_page=100 hozircha yetarli. 2500 foydalanuvchida bu
+      // ekranga ham sahifalash qo'shish kerak bo'ladi.
+      final javob = await ApiService().get('students?per_page=100');
       if (!mounted) return;
-      _users = snapshot.docs.map((doc) {
-        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        data['id'] = doc.id;
-        return data;
-      }).toList();
+
+      final royxat = javob['data'];
+      _users = royxat is List
+          ? royxat
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : <Map<String, dynamic>>[];
     } catch (e) {
       debugPrint("Xatolik foydalanuvchilarni yuklashda: $e");
     } finally {
@@ -83,20 +103,75 @@ class _GirlsRoleManagementTabState extends State<GirlsRoleManagementTab> {
   }
 
   Future<void> _changeRole(String userId, String newRole) async {
-    await FirebaseFirestore.instance
-        .collection('foydalanuvchilar')
-        .doc(userId)
-        .update({
-      'role': newRole,
-    });
-    await _loadUsers();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Rol o'zgartirildi"),
-        backgroundColor: Colors.green,
+    // Rolni faqat superAdmin o'zgartira oladi - buni backend
+    // UserPolicy::changeRole() tekshiradi.
+    try {
+      await ApiService().updateStudent(userId, {'role': newRole});
+      await _loadUsers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Rol o'zgartirildi"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Rolni o'zgartirib bo'lmadi: $e"),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete(String userId, String fullName) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: GTheme.bgCard,
+        title: const Text("Foydalanuvchini o'chirish",
+            style: TextStyle(color: Colors.white)),
+        content: Text(
+          "Haqiqatan ham \"$fullName\" foydalanuvchisini o'chirmoqchimisiz? Ushbu amalni ortga qaytarib bo'lmaydi.",
+          style: const TextStyle(color: GTheme.soft),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Bekor qilish'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("O'chirish", style: TextStyle(color: GTheme.red)),
+          ),
+        ],
       ),
     );
+
+    if (confirm != true) return;
+
+    try {
+      await ApiService().deleteStudent(userId);
+      await _loadUsers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Foydalanuvchi o'chirildi"),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("O'chirishda xatolik: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -193,8 +268,10 @@ class _GirlsRoleManagementTabState extends State<GirlsRoleManagementTab> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                  builder: (_) =>
-                      AdminAddUserScreen(isSuperAdmin: widget.isSuperAdmin)),
+                  builder: (_) => AdminAddUserScreen(
+                        isSuperAdmin: widget.isSuperAdmin,
+                        initialHostel: 'girls',
+                      )),
             ).then((_) => _loadUsers());
           },
           backgroundColor: Colors.transparent,
@@ -205,189 +282,256 @@ class _GirlsRoleManagementTabState extends State<GirlsRoleManagementTab> {
                   TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: GTheme.pink))
-          : _filteredUsers.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.search_off_rounded,
-                          size: 56, color: GTheme.muted),
-                      const SizedBox(height: 12),
-                      Text(
-                        _searchQuery.isEmpty
-                            ? 'Foydalanuvchilar topilmadi'
-                            : '"$_searchQuery" bo\'yicha natija yo\'q',
-                        style: TextStyle(color: GTheme.muted, fontSize: 14),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                  itemCount: _filteredUsers.length,
-                  itemBuilder: (context, index) {
-                    var user = _filteredUsers[index];
-                    String currentRole = user['role'] ?? 'talaba';
-                    String fullName = user['fullName'] ?? 'Noma\'lum';
-                    String email = user['email'] ?? '';
-                    String hostel = user['hostel'] ?? 'boys';
+      body: Column(
+        children: [
+          // Yotoqxona filter chip-lari
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Row(
+              children: [
+                _filterChip('all', 'Barchasi'),
+                const SizedBox(width: 8),
+                _filterChip('girls', 'Qizlar'),
+                const SizedBox(width: 8),
+                _filterChip('boys', "O'g'il bolalar"),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: GTheme.pink))
+                : _filteredUsers.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.search_off_rounded,
+                                size: 56, color: GTheme.muted),
+                            const SizedBox(height: 12),
+                            Text(
+                              _searchQuery.isEmpty
+                                  ? 'Foydalanuvchilar topilmadi'
+                                  : '"$_searchQuery" bo\'yicha natija yo\'q',
+                              style:
+                                  TextStyle(color: GTheme.muted, fontSize: 14),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                        itemCount: _filteredUsers.length,
+                        itemBuilder: (context, index) {
+                          var user = _filteredUsers[index];
+                          String currentRole = user['role'] ?? 'talaba';
+                          String fullName =
+                              (user['full_name'] ?? user['fullName']) ??
+                                  'Noma\'lum';
+                          String email = user['email'] ?? '';
+                          String hostel = user['hostel'] ?? 'boys';
+                          // Oddiy 'admin' rolidagi foydalanuvchi
+                          // 'admin'/'superAdmin' rolidagi boshqa
+                          // foydalanuvchining rolini yoki hisobini o'zgartira/o'chira
+                          // olmaydi — bu huquq faqat superAdmin'da.
+                          final bool isProtectedTarget = !widget.isSuperAdmin &&
+                              (currentRole == 'admin' ||
+                                  currentRole == 'superAdmin');
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: GTheme.bgCard,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: GTheme.faint),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color:
-                                  _getRoleColor(currentRole).withOpacity(0.18),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                  color: _getRoleColor(currentRole)
-                                      .withOpacity(0.35)),
+                              color: GTheme.bgCard,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: GTheme.faint),
                             ),
-                            child: Center(
-                              child: Text(
-                                fullName.isNotEmpty
-                                    ? fullName[0].toUpperCase()
-                                    : "?",
-                                style: TextStyle(
-                                  color: _getRoleColor(currentRole),
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        fullName,
-                                        style: const TextStyle(
-                                          color: GTheme.white,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13.5,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: _getRoleColor(currentRole)
+                                        .withOpacity(0.18),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                        color: _getRoleColor(currentRole)
+                                            .withOpacity(0.35)),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      fullName.isNotEmpty
+                                          ? fullName[0].toUpperCase()
+                                          : "?",
+                                      style: TextStyle(
+                                        color: _getRoleColor(currentRole),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 16,
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
-                                    _HostelChip(hostel: hostel),
-                                  ],
+                                  ),
                                 ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  email,
-                                  style: TextStyle(
-                                      color: GTheme.muted, fontSize: 11.5),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Builder(builder: (context) {
-                            // Oddiy 'admin' rolidagi foydalanuvchi
-                            // 'admin'/'superAdmin' rolidagi boshqa
-                            // foydalanuvchining rolini umuman o'zgartira
-                            // olmaydi — bu huquq faqat superAdmin'da.
-                            final bool isProtectedTarget =
-                                !widget.isSuperAdmin &&
-                                    (currentRole == 'admin' ||
-                                        currentRole == 'superAdmin');
-                            final List<String> selectableRoles = [
-                              if (widget.isSuperAdmin) 'superAdmin',
-                              if (widget.isSuperAdmin) 'admin',
-                              'mudir',
-                              'moliyachi',
-                              'talaba',
-                              if (![
-                                'superAdmin',
-                                'admin',
-                                'mudir',
-                                'moliyachi',
-                                'talaba'
-                              ].contains(currentRole))
-                                currentRole,
-                              if (isProtectedTarget) currentRole,
-                            ];
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: GTheme.bgBase,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: GTheme.white.withOpacity(0.08)),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  dropdownColor: GTheme.bgCard,
-                                  style: TextStyle(
-                                      color: _getRoleColor(currentRole),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700),
-                                  icon: Icon(Icons.expand_more_rounded,
-                                      color: GTheme.muted, size: 18),
-                                  value: selectableRoles.contains(currentRole)
-                                      ? currentRole
-                                      : 'talaba',
-                                  items: (isProtectedTarget
-                                          ? {currentRole}
-                                          : selectableRoles.toSet())
-                                      .map((role) {
-                                    return DropdownMenuItem(
-                                      value: role,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
                                         children: [
-                                          Container(
-                                            width: 8,
-                                            height: 8,
-                                            decoration: BoxDecoration(
-                                              color: _getRoleColor(role),
-                                              shape: BoxShape.circle,
+                                          Flexible(
+                                            child: Text(
+                                              fullName,
+                                              style: const TextStyle(
+                                                color: GTheme.white,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 13.5,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
-                                          Text(_getRoleText(role)),
+                                          const SizedBox(width: 6),
+                                          _HostelChip(hostel: hostel),
                                         ],
                                       ),
-                                    );
-                                  }).toList(),
-                                  onChanged: isProtectedTarget
-                                      ? null
-                                      : (newRole) {
-                                          if (newRole != null &&
-                                              newRole != currentRole) {
-                                            _changeRole(user['id'], newRole);
-                                          }
-                                        },
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        email,
+                                        style: TextStyle(
+                                            color: GTheme.muted,
+                                            fontSize: 11.5),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          }),
-                        ],
+                                const SizedBox(width: 8),
+                                Builder(builder: (context) {
+                                  final List<String> selectableRoles = [
+                                    if (widget.isSuperAdmin) 'superAdmin',
+                                    if (widget.isSuperAdmin) 'admin',
+                                    'mudir',
+                                    'moliyachi',
+                                    'talaba',
+                                    if (![
+                                      'superAdmin',
+                                      'admin',
+                                      'mudir',
+                                      'moliyachi',
+                                      'talaba'
+                                    ].contains(currentRole))
+                                      currentRole,
+                                    if (isProtectedTarget) currentRole,
+                                  ];
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: GTheme.bgBase,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                          color:
+                                              GTheme.white.withOpacity(0.08)),
+                                    ),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        dropdownColor: GTheme.bgCard,
+                                        style: TextStyle(
+                                            color: _getRoleColor(currentRole),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700),
+                                        icon: Icon(Icons.expand_more_rounded,
+                                            color: GTheme.muted, size: 18),
+                                        value: selectableRoles
+                                                .contains(currentRole)
+                                            ? currentRole
+                                            : 'talaba',
+                                        items: (isProtectedTarget
+                                                ? {currentRole}
+                                                : selectableRoles.toSet())
+                                            .map((role) {
+                                          return DropdownMenuItem(
+                                            value: role,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration: BoxDecoration(
+                                                    color: _getRoleColor(role),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(_getRoleText(role)),
+                                              ],
+                                            ),
+                                          );
+                                        }).toList(),
+                                        onChanged: isProtectedTarget
+                                            ? null
+                                            : (newRole) {
+                                                if (newRole != null &&
+                                                    newRole != currentRole) {
+                                                  _changeRole(
+                                                      user['id'], newRole);
+                                                }
+                                              },
+                                      ),
+                                    ),
+                                  );
+                                }),
+                                if (widget.canDelete &&
+                                    user['id'] != widget.currentUserId &&
+                                    !isProtectedTarget) ...[
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    icon: const Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: GTheme.red,
+                                        size: 20),
+                                    tooltip: "O'chirish",
+                                    onPressed: () => _confirmDelete(
+                                        user['id'] ?? '', fullName),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterChip(String filterKey, String label) {
+    final isSelected = _hostelFilter == filterKey;
+    return GestureDetector(
+      onTap: () => setState(() => _hostelFilter = filterKey),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? GTheme.pink : GTheme.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? GTheme.pink : GTheme.white.withOpacity(0.08),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : GTheme.soft,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 12.5,
+          ),
+        ),
+      ),
     );
   }
 
