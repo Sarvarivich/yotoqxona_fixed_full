@@ -39,7 +39,7 @@ class PaymentController extends Controller
         $formatted = $payments->map(function ($p) {
             $data = $p->toArray();
             if ($p->receipt_path) {
-                $data['receipt_url'] = asset('storage/' . $p->receipt_path);
+                $data['receipt_url'] = Storage::disk('public')->url($p->receipt_path);
             }
             return $data;
         });
@@ -110,7 +110,7 @@ class PaymentController extends Controller
 
         $payment->load(['student', 'room.hostel']);
         $res = $payment->toArray();
-        $res['receipt_url'] = asset('storage/' . $receiptPath);
+        $res['receipt_url'] = Storage::disk('public')->url($receiptPath);
 
         return response()->json([
             'success' => true,
@@ -132,7 +132,7 @@ class PaymentController extends Controller
 
         $res = $payment->toArray();
         if ($payment->receipt_path) {
-            $res['receipt_url'] = asset('storage/' . $payment->receipt_path);
+            $res['receipt_url'] = Storage::disk('public')->url($payment->receipt_path);
         }
 
         return response()->json([

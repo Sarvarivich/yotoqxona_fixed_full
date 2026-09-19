@@ -38,14 +38,38 @@ return [
             'report' => false,
         ],
 
-        'public' => [
-            'driver' => 'local',
-            'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
-            'visibility' => 'public',
-            'throw' => false,
-            'report' => false,
-        ],
+        // Obyekt saqlagich (Supabase Storage yoki Cloudflare R2).
+        //
+        // AWS_BUCKET ornatilgan bolsa fayllar bulutga yoziladi.
+        // Ornatilmagan bolsa - mahalliy diskka, ishlab chiqish
+        // muhitida shunday qulay.
+        //
+        // Railway diski VAQTINCHALIK: har deploy'da tozalanadi.
+        // Shuning uchun production'da AWS_BUCKET majburiy.
+        'public' => env('AWS_BUCKET')
+            ? [
+                'driver' => 's3',
+                'key' => env('AWS_ACCESS_KEY_ID'),
+                'secret' => env('AWS_SECRET_ACCESS_KEY'),
+                'region' => env('AWS_DEFAULT_REGION', 'auto'),
+                'bucket' => env('AWS_BUCKET'),
+                'endpoint' => env('AWS_ENDPOINT'),
+                'url' => env('AWS_URL'),
+                'use_path_style_endpoint' => env(
+                    'AWS_USE_PATH_STYLE_ENDPOINT',
+                    true
+                ),
+                'visibility' => 'public',
+                'throw' => false,
+            ]
+            : [
+                'driver' => 'local',
+                'root' => storage_path('app/public'),
+                'url' => env('APP_URL') . '/storage',
+                'visibility' => 'public',
+                'throw' => false,
+            ],
+
 
         's3' => [
             'driver' => 's3',

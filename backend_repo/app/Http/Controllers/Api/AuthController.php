@@ -127,8 +127,8 @@ class AuthController extends Controller
             $additionalData['hasSocialBenefit'] = true;
             if ($request->benefit_type) $additionalData['benefitType'] = $request->benefit_type;
             if ($request->lost_parent_type) $additionalData['lostParentType'] = $request->lost_parent_type;
-            if ($benefitDocPath) $additionalData['benefitDocumentUrl'] = asset('storage/' . $benefitDocPath);
-            if ($deathCertPath) $additionalData['deathCertificateUrl'] = asset('storage/' . $deathCertPath);
+            if ($benefitDocPath) $additionalData['benefitDocumentUrl'] = Storage::disk('public')->url($benefitDocPath);
+            if ($deathCertPath) $additionalData['deathCertificateUrl'] = Storage::disk('public')->url($deathCertPath);
         }
 
         $user = User::create([

@@ -91,7 +91,7 @@ class DocumentController extends Controller
     {
         $data = [];
         foreach (self::TYPE_COLUMN_MAP as $type => $column) {
-            $data["{$type}_url"] = $student->$column ? asset('storage/' . $student->$column) : null;
+            $data["{$type}_url"] = $student->$column ? Storage::disk('public')->url($student->$column) : null;
         }
         return $data;
     }
