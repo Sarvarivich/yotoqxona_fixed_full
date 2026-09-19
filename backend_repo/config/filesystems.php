@@ -59,8 +59,15 @@ return [
                     'AWS_USE_PATH_STYLE_ENDPOINT',
                     true
                 ),
-                'visibility' => 'public',
-                'throw' => false,
+                // visibility ATAYLAB yoq: R2 obyekt ACL sini
+                // qollab-quvvatlamaydi va x-amz-acl sarlavhasi
+                // bilan kelgan sorovni rad etadi. Fayllar bucket
+                // sozlamasi (Public Development URL) orqali
+                // ommaviy boladi.
+                // throw => true: saqlash xatosi endi yashirilmaydi.
+                // Ilgari false edi va store() jimgina $false
+                // qaytarardi - bazaga 0 bolib yozilardi.
+                'throw' => true,
             ]
             : [
                 'driver' => 'local',
