@@ -21,7 +21,25 @@ class _AddGirlsRoomScreenState extends State<AddGirlsRoomScreen> {
   late final TextEditingController _floorCtrl;
   late final TextEditingController _capacityCtrl;
   late final TextEditingController _priceCtrl;
-  late final TextEditingController _amenitiesCtrl;
+  /// Xonada mavjud qulayliklar.
+  ///
+  /// Ilgari vergul bilan yoziladigan matn maydoni edi - har kim
+  /// boshqacha yozardi ("wifi", "Wi-Fi", "internet") va keyin
+  /// filtrlash imkonsiz bo'lardi. Endi o'g'il bolalar tomonidagi
+  /// kabi tayyor ro'yxatdan belgilanadi.
+  static const List<String> _qulayliklar = [
+    'Wi-Fi',
+    'Konditsioner',
+    'Sanuzel',
+    'Muzlatgich',
+    'Televizor',
+    'Krovat',
+    "To'shak",
+    'Kiyim javoni',
+    'Tortma',
+  ];
+
+  final Set<String> _tanlangan = <String>{};
   late final TextEditingController _notesCtrl;
 
   RoomStatus _status = RoomStatus.empty;
@@ -37,7 +55,14 @@ class _AddGirlsRoomScreenState extends State<AddGirlsRoomScreen> {
     _floorCtrl = TextEditingController(text: r?.floor.toString() ?? '');
     _capacityCtrl = TextEditingController(text: r?.capacity.toString() ?? '4');
     _priceCtrl = TextEditingController(text: r?.pricePerMonth.toStringAsFixed(0) ?? '');
-    _amenitiesCtrl = TextEditingController(text: r?.amenities.join(', ') ?? '');
+    // Mavjud xonani tahrirlashda belgilanganlarni tiklaymiz.
+    // Ro'yxatda yo'q eski qiymatlar (qo'lda yozilganlar) e'tiborsiz
+    // qoladi - ular endi qo'llab-quvvatlanmaydi.
+    if (r != null) {
+      for (final q in r.amenities) {
+        if (_qulayliklar.contains(q)) _tanlangan.add(q);
+      }
+    }
     _notesCtrl = TextEditingController(text: r?.notes ?? '');
     _status = r?.status ?? RoomStatus.empty;
   }
@@ -48,7 +73,6 @@ class _AddGirlsRoomScreenState extends State<AddGirlsRoomScreen> {
     _floorCtrl.dispose();
     _capacityCtrl.dispose();
     _priceCtrl.dispose();
-    _amenitiesCtrl.dispose();
     _notesCtrl.dispose();
     super.dispose();
   }
@@ -57,11 +81,7 @@ class _AddGirlsRoomScreenState extends State<AddGirlsRoomScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
-      final amenities = _amenitiesCtrl.text
-          .split(',')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
+      final amenities = _tanlangan.toList();
 
       final provider = context.read<GirlsRoomProvider>();
 
@@ -187,7 +207,7 @@ class _AddGirlsRoomScreenState extends State<AddGirlsRoomScreen> {
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<RoomStatus>(
-                initialValue: _status,
+                value: _status,
                 dropdownColor: GTheme.bgCard2,
                 style: const TextStyle(color: Colors.white),
                 decoration:
@@ -198,12 +218,81 @@ class _AddGirlsRoomScreenState extends State<AddGirlsRoomScreen> {
                 onChanged: (v) => setState(() => _status = v ?? RoomStatus.empty),
               ),
               const SizedBox(height: 14),
-              TextFormField(
-                controller: _amenitiesCtrl,
-                style: const TextStyle(color: Colors.white),
-                decoration: GTheme.inputDecoration(
-                    'Qulayliklar (vergul bilan ajrating)',
-                    icon: Icons.checklist_rounded),
+              // Qulayliklar tayyor ro'yxatdan belgilanadi - o'g'il
+              // bolalar tomonidagi kabi. Bu yozilishdagi farqlarni
+              // ("wifi" / "Wi-Fi" / "internet") yo'q qiladi.
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: GTheme.bgCard2,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.checklist_rounded,
+                            size: 18, color: GTheme.pink),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Qulayliklar',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_tanlangan.isNotEmpty)
+                          Text(
+                            '${_tanlangan.length} ta',
+                            style: const TextStyle(
+                              color: GTheme.pink,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _qulayliklar.map((q) {
+                        final belgilangan = _tanlangan.contains(q);
+                        return FilterChip(
+                          label: Text(q),
+                          selected: belgilangan,
+                          onSelected: (v) => setState(() {
+                            if (v) {
+                              _tanlangan.add(q);
+                            } else {
+                              _tanlangan.remove(q);
+                            }
+                          }),
+                          backgroundColor: GTheme.bgCard,
+                          selectedColor: GTheme.pink.withOpacity(0.25),
+                          checkmarkColor: GTheme.pink,
+                          labelStyle: TextStyle(
+                            color: belgilangan ? GTheme.pink : Colors.white70,
+                            fontSize: 12.5,
+                            fontWeight: belgilangan
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                          side: BorderSide(
+                            color: belgilangan
+                                ? GTheme.pink
+                                : Colors.white24,
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 14),
               TextFormField(

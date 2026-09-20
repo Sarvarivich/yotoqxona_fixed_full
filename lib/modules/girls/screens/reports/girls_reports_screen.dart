@@ -56,14 +56,6 @@ class _GirlsReportsScreenState extends State<GirlsReportsScreen> {
         TextCellValue(stats.occupancyRate.toStringAsFixed(1))
       ]);
       sheet.appendRow([
-        TextCellValue("Yigilgan tolovlar"),
-        TextCellValue(stats.totalCollected.toStringAsFixed(0))
-      ]);
-      sheet.appendRow([
-        TextCellValue("Kutilayotgan tolovlar"),
-        TextCellValue(stats.totalPending.toStringAsFixed(0))
-      ]);
-      sheet.appendRow([
         TextCellValue("Kutilayotgan murojaatlar"),
         IntCellValue(stats.pendingComplaints)
       ]);
@@ -237,31 +229,6 @@ class _GirlsReportsScreenState extends State<GirlsReportsScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Container(
-                    decoration: GTheme.cardDecoration(),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("Tolovlar holati",
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14)),
-                        const SizedBox(height: 14),
-                        _MoneyRow(
-                            label: 'Yigilgan',
-                            value: stats.totalCollected,
-                            color: GTheme.mint),
-                        const SizedBox(height: 10),
-                        _MoneyRow(
-                            label: 'Kutilayotgan',
-                            value: stats.totalPending,
-                            color: GTheme.orange),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             );
@@ -326,31 +293,6 @@ class _LegendDot extends StatelessWidget {
         Text(label,
             style:
                 TextStyle(color: GTheme.white.withOpacity(0.6), fontSize: 12)),
-      ],
-    );
-  }
-}
-
-class _MoneyRow extends StatelessWidget {
-  final String label;
-  final double value;
-  final Color color;
-  const _MoneyRow(
-      {required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 10),
-        Text(label, style: const TextStyle(color: GTheme.soft, fontSize: 13)),
-        const Spacer(),
-        Text('${GTheme.formatMoney(value)} so\'m',
-            style: TextStyle(color: color, fontWeight: FontWeight.w800)),
       ],
     );
   }

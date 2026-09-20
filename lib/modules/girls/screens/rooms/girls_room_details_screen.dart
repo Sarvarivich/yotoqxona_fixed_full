@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../../../services/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -33,27 +34,15 @@ class GirlsRoomDetailsScreen extends StatefulWidget {
   State<GirlsRoomDetailsScreen> createState() => _GirlsRoomDetailsScreenState();
 }
 
-// ✅ Talabalar ikki xil manbada saqlanadi: admin qo'lda qo'shganlari
-// 'girls_students' to'plamida, o'zi ro'yxatdan o'tganlari esa
-// 'foydalanuvchilar' to'plamida (Firebase Auth orqali). Xona
-// biriktirish ekrani avval faqat birinchisini ko'rar edi — shu
-// sabab o'zi ro'yxatdan o'tgan talabalar ro'yxatda ko'rinmas edi.
-// Bu yordamchi klass ikkala manbani bitta umumiy shaklga keltiradi.
-class _AssignableStudent {
-  final String id;
-  final String fullName;
-  final String phone;
-  final bool fromUsersCollection;
-  _AssignableStudent({
-    required this.id,
-    required this.fullName,
-    required this.phone,
-    required this.fromUsersCollection,
-  });
-}
-
 class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
   String? selectedStudentId;
+
+  /// Tanlangan talabaning korinadigan nomi.
+  ///
+  /// Dropdown orniga qidiruv oynasi ishlatilgani uchun tanlangan
+  /// talabani alohida saqlaymiz.
+  String? selectedStudentName;
+
   bool _isAssigning = false;
 
   @override
@@ -62,37 +51,75 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
   ///
   /// Ilgari 'foydalanuvchilar' kolleksiyasi real vaqtda tinglanardi.
   /// Endi Laravel'dan bir marta olinadi.
-  Future<List<Map<String, dynamic>>> _qizTalabalar() async {
+  /// Qiz talabalarni server tomonda qidiradi.
+  ///
+  /// NEGA QIDIRUV, DROPDOWN EMAS
+  /// ---------------------------
+  /// Ilgari barcha talabalar yuklanib, dropdown ga solinardi. 2000
+  /// talabada bu uch muammo tugdiradi:
+  ///   1) backend bir sorovda 100 tadan kop bermaydi - qolganlari
+  ///      umuman korinmasdi;
+  ///   2) 2000 elementli dropdown ilovani sekinlashtiradi;
+  ///   3) kerakli odamni royxatdan topish deyarli imkonsiz.
+  ///
+  /// Endi faqat qidiruvga mos 70 ta natija yuklanadi.
+  Future<List<Map<String, dynamic>>> _talabaQidir(String matn) async {
     final natija = <Map<String, dynamic>>[];
 
     try {
-      int sahifa = 1;
-      int oxirgi = 1;
+      final parametrlar = <String, String>{
+        'role': 'talaba',
+        'hostel': 'girls',
+        'per_page': '70',
+      };
+      if (matn.trim().isNotEmpty) {
+        parametrlar['search'] = matn.trim();
+      }
 
-      do {
-        final javob = await ApiService().get(
-          'students?role=talaba&hostel=girls&per_page=100&page=$sahifa',
-        );
+      final javob = await ApiService().get(
+        'students?${Uri(queryParameters: parametrlar).query}',
+      );
 
-        final royxat = javob['data'];
-        if (royxat is List) {
-          for (final e in royxat) {
-            if (e is Map) natija.add(Map<String, dynamic>.from(e));
-          }
+      // Backend ba'zan paginate() obyektini qaytaradi.
+      final xom = javob['data'];
+      final royxat = xom is Map ? xom['data'] : xom;
+
+      if (royxat is List) {
+        for (final e in royxat) {
+          if (e is Map) natija.add(Map<String, dynamic>.from(e));
         }
-
-        final meta = javob['meta'];
-        oxirgi = meta is Map
-            ? ((meta['last_page'] as num?)?.toInt() ?? sahifa)
-            : sahifa;
-        sahifa++;
-      } while (sahifa <= oxirgi && sahifa <= 100);
-    } catch (_) {
-      // Xato bo'lsa bo'sh ro'yxat qaytadi.
+      }
+    } catch (e) {
+      debugPrint('Talabalarni qidirishda xatolik: $e');
     }
 
     return natija;
   }
+
+  /// Talaba tanlash oynasini ochadi.
+  Future<void> _talabaTanlash(RoomModel liveRoom) async {
+    final tanlangan = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _QizTalabaQidiruvSheet(
+        qidir: _talabaQidir,
+        // Xonasi bor talabalar korsatilmaydi - avval ularni
+        // hozirgi xonasidan chiqarish kerak.
+        faqatXonasizlar: true,
+        chiqarib: liveRoom.studentIds,
+      ),
+    );
+
+    if (tanlangan == null || !mounted) return;
+
+    setState(() {
+      selectedStudentId = (tanlangan['id'] ?? '').toString();
+      selectedStudentName =
+          (tanlangan['full_name'] ?? tanlangan['fullName'] ?? '').toString();
+    });
+  }
+
 
     return StreamBuilder<RoomModel?>(
       stream: context.read<GirlsRoomProvider>().watchRoom(widget.room.id),
@@ -301,127 +328,75 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
                                 color: Colors.white)),
                         const SizedBox(height: 12),
 
-                        // ✅ Ikkala manbadan ham (admin qo'shgan +
-                        // o'zi ro'yxatdan o'tgan) talabalarni olamiz.
-                        FutureBuilder<List<Map<String, dynamic>>>(
-                          future: _qizTalabalar(),
-                          builder: (context, usersSnapshot) {
-                            final registeredGirls =
-                                (usersSnapshot.data ?? const [])
-                                    .map((data) {
-                              return _AssignableStudent(
-                                id: (data['id'] ?? '').toString(),
-                                fullName: (data['full_name'] ??
-                                        data['fullName'] ??
-                                        '')
-                                    .toString(),
-                                phone: (data['phone'] ??
-                                        data['phoneNumber'] ??
-                                        '')
-                                    .toString(),
-                                fromUsersCollection: true,
-                              );
-                            }).toList();
-
-                            return StreamBuilder<List<GirlStudentModel>>(
-                              stream:
-                                  context.read<GirlsStudentProvider>().students,
-                              builder: (context, studentSnapshot) {
-                                if (!studentSnapshot.hasData) {
-                                  return const LinearProgressIndicator();
-                                }
-
-                                // Boshqa xonada turgan talabalar ham
-                                // ko'rsatiladi - ularni shu xonaga
-                                // ko'chirish mumkin. Backend eski
-                                // biriktirishni o'zi yopadi.
-                                final manualGirls = studentSnapshot.data!
-                                    .map((s) => _AssignableStudent(
-                                          id: s.id,
-                                          fullName: s.roomId.isEmpty
-                                              ? s.fullName
-                                              : '${s.fullName}  ·  hozir: '
-                                                  '${s.roomId}-xona',
-                                          phone: s.phone,
-                                          fromUsersCollection: false,
-                                        ))
-                                    .toList();
-
-                                // Ikkala manbadan kelgan ro'yxatni
-                                // birlashtiramiz. Takroriy ID bo'lsa
-                                // dropdown yiqiladi, shuning uchun
-                                // noyobligini ta'minlaymiz.
-                                final korilgan = <String>{};
-                                final combined = <_AssignableStudent>[];
-
-                                for (final s in [
-                                  ...manualGirls,
-                                  ...registeredGirls,
-                                ]) {
-                                  if (liveRoom.studentIds.contains(s.id)) {
-                                    continue;
-                                  }
-                                  if (!korilgan.add(s.id)) continue;
-                                  combined.add(s);
-                                }
-
-                                if (combined.isEmpty) {
-                                  return Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.shade50,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Text(
-                                      "⚠️ Biriktirish uchun talaba topilmadi.",
-                                      style: TextStyle(
-                                        color: Colors.orange,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                final allStudentIds =
-                                    combined.map((s) => s.id).toSet();
-                                final safeValue =
-                                    allStudentIds.contains(selectedStudentId)
-                                        ? selectedStudentId
-                                        : null;
-
-                                return DropdownButtonFormField<String>(
-                                  // key ro'yxat o'zgarganda widget'ni qayta
-                                  // yaratadi. Ansiz Form maydoni eski
-                                  // tanlangan qiymatni ichida saqlab
-                                  // qolardi va u ro'yxatdan chiqib
-                                  // ketganda "value bir marta uchramadi"
-                                  // xatosi chiqardi.
-                                  key: ValueKey(
-                                    '${combined.length}_${safeValue ?? ''}',
+                        // Talaba tanlash.
+                        //
+                        // Ilgari dropdown bor edi va unga barcha
+                        // talabalar yuklanardi. 2000 talabada u
+                        // ishlamaydi: backend 100 tadan kop bermaydi,
+                        // dropdown esa sekinlashadi.
+                        //
+                        // Endi qidiruv oynasi: yozilgan matn serverga
+                        // boradi va faqat mos 70 ta natija keladi.
+                        Material(
+                          color: GTheme.bgCard2,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () => _talabaTanlash(liveRoom),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: Colors.white12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    selectedStudentId == null
+                                        ? Icons.person_search_rounded
+                                        : Icons.person_rounded,
+                                    color: selectedStudentId == null
+                                        ? Colors.white54
+                                        : GTheme.pink,
+                                    size: 20,
                                   ),
-                                  initialValue: safeValue,
-                                  dropdownColor: GTheme.bgCard,
-                                  hint: const Text("Talabalar ro'yxati",
-                                      style: TextStyle(color: Colors.white70)),
-                                  isExpanded: true,
-                                  decoration: GTheme.inputDecoration('Talaba'),
-                                  items: combined.map((student) {
-                                    return DropdownMenuItem<String>(
-                                      value: student.id,
-                                      child: Text(
-                                        student.fullName,
-                                        style: const TextStyle(
-                                            color: Colors.white),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      selectedStudentName ??
+                                          "Talaba tanlash uchun bosing",
+                                      style: TextStyle(
+                                        color: selectedStudentId == null
+                                            ? Colors.white54
+                                            : Colors.white,
+                                        fontWeight: selectedStudentId == null
+                                            ? FontWeight.normal
+                                            : FontWeight.w600,
                                       ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (val) =>
-                                      setState(() => selectedStudentId = val),
-                                );
-                              },
-                            );
-                          },
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if (selectedStudentId != null)
+                                    IconButton(
+                                      tooltip: 'Bekor qilish',
+                                      icon: const Icon(Icons.close_rounded,
+                                          size: 18, color: Colors.white54),
+                                      onPressed: () => setState(() {
+                                        selectedStudentId = null;
+        selectedStudentName = null;
+                                        selectedStudentName = null;
+                                      }),
+                                    )
+                                  else
+                                    const Icon(Icons.chevron_right_rounded,
+                                        color: Colors.white38),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 24),
 
@@ -521,7 +496,7 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
                         )
                       else
                         FutureBuilder<List<Map<String, dynamic>>>(
-                          future: _qizTalabalar(),
+                          future: _talabaQidir(''),
                           builder: (context, usersSnap) {
                             final registeredById =
                                 <String, Map<String, dynamic>>{
@@ -678,6 +653,7 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
       setState(() {
         _isAssigning = false;
         selectedStudentId = null;
+        selectedStudentName = null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -694,5 +670,278 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
         SnackBar(content: Text("Xatolik: $e"), backgroundColor: Colors.red),
       );
     }
+  }
+}
+
+// =====================================================================
+// QIZ TALABA QIDIRUV OYNASI
+// =====================================================================
+//
+// Dropdown o'rniga ishlatiladi. Ro'yxat butunlay yuklanmaydi —
+// faqat qidiruvga mos 70 ta natija keladi. Shu tufayli 2000
+// talabada ham bir xil tez ishlaydi.
+
+class _QizTalabaQidiruvSheet extends StatefulWidget {
+  /// Serverdan qidiradigan funksiya.
+  final Future<List<Map<String, dynamic>>> Function(String) qidir;
+
+  /// true bo'lsa, xonasi bor talabalar ko'rsatilmaydi.
+  final bool faqatXonasizlar;
+
+  /// Qo'shimcha chiqarib tashlanadigan ID lar (shu xonadagilar).
+  final List<String> chiqarib;
+
+  const _QizTalabaQidiruvSheet({
+    required this.qidir,
+    this.faqatXonasizlar = true,
+    this.chiqarib = const [],
+  });
+
+  @override
+  State<_QizTalabaQidiruvSheet> createState() => _QizTalabaQidiruvSheetState();
+}
+
+class _QizTalabaQidiruvSheetState extends State<_QizTalabaQidiruvSheet> {
+  final _ctrl = TextEditingController();
+
+  List<Map<String, dynamic>> _natija = const [];
+  bool _yuklanmoqda = true;
+  Timer? _kutish;
+
+  @override
+  void initState() {
+    super.initState();
+    _qidir('');
+    _ctrl.addListener(_ozgardi);
+  }
+
+  @override
+  void dispose() {
+    _kutish?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  /// Har bosilgan harfda so'rov yubormaslik uchun 400 ms kutamiz.
+  void _ozgardi() {
+    _kutish?.cancel();
+    _kutish = Timer(const Duration(milliseconds: 400), () {
+      _qidir(_ctrl.text);
+    });
+  }
+
+  Future<void> _qidir(String matn) async {
+    if (!mounted) return;
+    setState(() => _yuklanmoqda = true);
+
+    final xom = await widget.qidir(matn);
+
+    if (!mounted) return;
+
+    final filtrlangan = xom.where((d) {
+      final id = (d['id'] ?? '').toString();
+      if (widget.chiqarib.contains(id)) return false;
+
+      if (widget.faqatXonasizlar) {
+        // Xonasi bor talabalar ko'rsatilmaydi — avval ularni
+        // hozirgi xonasidan chiqarish kerak.
+        final b = d['active_room_assignment'] ?? d['activeRoomAssignment'];
+        if (b is Map) return false;
+      }
+
+      return true;
+    }).toList();
+
+    setState(() {
+      _natija = filtrlangan;
+      _yuklanmoqda = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.8,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: GTheme.bgCard,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.person_search_rounded, color: GTheme.pink),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        "Talaba tanlash",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded,
+                          color: Colors.white54),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: TextField(
+                  controller: _ctrl,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: "Ism yoki JSHSHIR bo'yicha qidirish...",
+                    hintStyle: const TextStyle(color: Colors.white38),
+                    prefixIcon:
+                        const Icon(Icons.search_rounded, color: Colors.white54),
+                    filled: true,
+                    fillColor: GTheme.bgCard2,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              if (_yuklanmoqda)
+                const LinearProgressIndicator(
+                  minHeight: 2,
+                  color: GTheme.pink,
+                ),
+              Expanded(
+                child: _natija.isEmpty && !_yuklanmoqda
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.search_off_rounded,
+                                size: 48, color: Colors.white24),
+                            const SizedBox(height: 10),
+                            Text(
+                              _ctrl.text.isEmpty
+                                  ? "Xonasi yo'q talaba topilmadi"
+                                  : "Natija topilmadi",
+                              style: const TextStyle(color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
+                        itemCount: _natija.length,
+                        itemBuilder: (context, i) {
+                          final d = _natija[i];
+                          final ism =
+                              (d['full_name'] ?? d['fullName'] ?? '—')
+                                  .toString();
+                          final fakultet = (d['faculty'] ?? '').toString();
+                          final kurs = d['course'];
+                          final qosh = <String>[
+                            if (fakultet.isNotEmpty) fakultet,
+                            if (kurs != null) "$kurs-kurs",
+                          ].join(' · ');
+
+                          final harf =
+                              ism.isNotEmpty ? ism[0].toUpperCase() : '?';
+
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Material(
+                              color: GTheme.bgCard2,
+                              borderRadius: BorderRadius.circular(14),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => Navigator.pop(context, d),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(13),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 40,
+                                        height: 40,
+                                        alignment: Alignment.center,
+                                        decoration: BoxDecoration(
+                                          color: GTheme.pink.withOpacity(0.18),
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          harf,
+                                          style: const TextStyle(
+                                            color: GTheme.pink,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              ism,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            if (qosh.isNotEmpty) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                qosh,
+                                                style: const TextStyle(
+                                                  fontSize: 11.5,
+                                                  color: Colors.white54,
+                                                ),
+                                                overflow:
+                                                    TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                      const Icon(Icons.chevron_right_rounded,
+                                          color: Colors.white38),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

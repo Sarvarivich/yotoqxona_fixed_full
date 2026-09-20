@@ -10,7 +10,6 @@ class GirlsSettingsScreen extends StatelessWidget {
   final UserModel user;
   const GirlsSettingsScreen({super.key, required this.user});
 
-  bool get _isSuperAdmin => user.role == UserRole.superAdmin;
 
   Future<void> _logout(BuildContext context) async {
     final confirm = await showDialog<bool>(
@@ -128,14 +127,6 @@ class GirlsSettingsScreen extends StatelessWidget {
               title: "Ma'lumotlar xavfsizligi",
               subtitle: "Barcha malumotlar boys tizimidan alohida saqlanadi",
             ),
-            if (_isSuperAdmin)
-              _SettingsTile(
-                icon: Icons.storage_rounded,
-                iconColor: GTheme.teal,
-                title: "Malumotlar bazasi",
-                subtitle:
-                    "girls_students, xonalar (hostel: girls), girls_complaints, girls_payments",
-              ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
