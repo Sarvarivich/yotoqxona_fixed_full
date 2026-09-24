@@ -265,6 +265,74 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Foydalanuvchi oz parolini almashtiradi.
+     *
+     * Talabalar umumiy vaqtinchalik parol bilan kiritilgani
+     * uchun birinchi kirishda parol majburiy almashtiriladi
+     * (must_change_password belgisi).
+     *
+     * Eski parol talab qilinadi: aks holda ochiq qolgan
+     * seansdan foydalanib parolni ogirlab olish mumkin.
+     */
+    public function changeOwnPassword(Request $request)
+    {
+        $user = $request->user();
+
+        $validator = Validator::make($request->all(), [
+            'current_password' => 'required|string',
+            'new_password' => 'required|string|min:8|confirmed',
+            'new_password_confirmation' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ma\'lumotlar xato kiritildi.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if (!Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Joriy parol notogri.',
+                'errors' => [
+                    'current_password' => ['Joriy parol notogri.'],
+                ],
+            ], 422);
+        }
+
+        if (Hash::check($request->new_password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Yangi parol eskisidan farq qilishi kerak.',
+                'errors' => [
+                    'new_password' => [
+                        'Yangi parol eskisidan farq qilishi kerak.',
+                    ],
+                ],
+            ], 422);
+        }
+
+        $user->password = Hash::make($request->new_password);
+        $user->must_change_password = false;
+        $user->save();
+
+        // Barcha eski tokenlarni bekor qilamiz - agar kimdir
+        // eski parol bilan kirgan bolsa, uning seansi yopiladi.
+        // Joriy qurilma uchun yangi token beramiz.
+        $user->tokens()->delete();
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Parol yangilandi.',
+            'token' => $token,
+            'data' => $user->fresh(),
+        ]);
+    }
+
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();

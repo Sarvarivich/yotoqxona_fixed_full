@@ -18,6 +18,7 @@ class User extends Authenticatable
         'email',
         'phone',
         'password',
+        'must_change_password',
         'role',
         'faculty',
         'course',
@@ -47,6 +48,7 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'additional_data' => 'array',
             'password' => 'hashed',
+            'must_change_password' => 'boolean',
         ];
     }
 
