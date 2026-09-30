@@ -15,7 +15,7 @@ class StudentController extends Controller
     /**
      * Tahrirlashda ruxsat etilgan maydonlar.
      *
-     * MUHIM: 'role' va 'is_active' bu ro'yxatda ATAYLAB yo'q вЂ” ular
+     * MUHIM: 'role' va 'is_active' bu ro'yxatda ATAYLAB yo'q РІР‚вЂќ ular
      * alohida tekshiruvdan keyin qo'shiladi. Ilgari bu metod
      * $request->except(['password']) bilan barcha maydonni ko'r-ko'rona
      * yozardi, shuning uchun mudir {"role":"superAdmin"} yuborib o'zini
@@ -51,7 +51,7 @@ class StudentController extends Controller
      * Talabalar va foydalanuvchilar ro'yxati.
      *
      * Mudir faqat o'z binosidagi foydalanuvchilarni ko'radi.
-     * Javobda shaxsiy maydonlar (JSHSHIR, pasport, manzil) yo'q вЂ”
+     * Javobda shaxsiy maydonlar (JSHSHIR, pasport, manzil) yo'q РІР‚вЂќ
      * ular faqat show() da, UserResource orqali beriladi.
      */
     public function index(Request $request)
@@ -65,7 +65,7 @@ class StudentController extends Controller
             ], 403);
         }
 
-        // ?detailed=1 РІР‚вЂќ to'liq ma'lumot (Excel eksporti uchun).
+        // ?detailed=1 Р Р†Р вЂљРІР‚Сњ to'liq ma'lumot (Excel eksporti uchun).
         // Bu endpoint faqat xodimlarga ochiq, shuning uchun to'liq
         // ma'lumot berish xavfsiz. Oddiy ro'yxat esa yengil
         // UserListResource bilan qaytadi.
@@ -128,7 +128,7 @@ class StudentController extends Controller
 
         $query->orderBy('full_name', 'asc');
 
-        // per_page berilsa вЂ” to'liq sahifalangan javob (meta bilan).
+        // per_page berilsa РІР‚вЂќ to'liq sahifalangan javob (meta bilan).
         if ($request->filled('per_page')) {
             $perPage = min(max($request->integer('per_page'), 1), 100);
             $sahifa = $query->paginate($perPage);
@@ -147,7 +147,7 @@ class StudentController extends Controller
             ]);
         }
 
-        // per_page berilmasa вЂ” eski shakl (oddiy massiv), lekin cheklangan.
+        // per_page berilmasa РІР‚вЂќ eski shakl (oddiy massiv), lekin cheklangan.
         $jami = (clone $query)->count();
         $royxat = $query->limit(self::CHEKSIZ_SORAGANDA_LIMIT)->get();
 
@@ -233,6 +233,13 @@ class StudentController extends Controller
             'registered_by' => $actor->role,
             'is_active' => true,
         ]);
+
+        // Admin huquqlari - faqat superAdmin bera oladi.
+        $huquq = $this->huquqlarniQoshish($request, [], $user);
+        if (isset($huquq['additional_data'])) {
+            $user->additional_data = $huquq['additional_data'];
+            $user->save();
+        }
 
         return response()->json([
             'success' => true,
@@ -320,11 +327,14 @@ class StudentController extends Controller
         }
 
         // Faqat ruxsat etilgan maydonlar olinadi. Bu yerda 'role',
-        // 'is_active' va 'password' YO'Q вЂ” ular quyida alohida
+        // 'is_active' va 'password' YO'Q РІР‚вЂќ ular quyida alohida
         // tekshiruvdan o'tadi.
         $data = $request->only(self::TAHRIRLASH_MUMKIN);
 
-        // Rolni o'zgartirish вЂ” faqat superAdmin.
+        // Admin huquqlari - faqat superAdmin ozgartira oladi.
+        $data = $this->huquqlarniQoshish($request, $data, $user);
+
+        // Rolni o'zgartirish РІР‚вЂќ faqat superAdmin.
         if ($request->filled('role') && $request->role !== $user->role) {
             if ($actor->cannot('changeRole', User::class)) {
                 return response()->json([
@@ -453,5 +463,39 @@ class StudentController extends Controller
             'success' => true,
             'message' => 'Parol muvaffaqiyatli yangilandi.',
         ]);
+    }
+
+    /**
+     * additional_data (admin huquqlari) ni qoshadi.
+     *
+     * FAQAT superAdmin yuborganda qabul qilinadi. Aks holda har
+     * qanday foydalanuvchi ozi yoki boshqaga huquq berib olishi
+     * mumkin edi - bu jiddiy xavfsizlik teshigi bolardi.
+     *
+     * Eski qiymatlar saqlanadi, yangilari ustiga yoziladi.
+     */
+    private function huquqlarniQoshish(Request $request, array $data, $mavjud = null): array
+    {
+        if (!$request->has('additional_data')) {
+            return $data;
+        }
+
+        $actor = $request->user();
+        if (!$actor || $actor->role !== 'superAdmin') {
+            return $data;
+        }
+
+        $yangi = $request->input('additional_data');
+        if (!is_array($yangi)) {
+            return $data;
+        }
+
+        $eski = [];
+        if ($mavjud && is_array($mavjud->additional_data ?? null)) {
+            $eski = $mavjud->additional_data;
+        }
+
+        $data['additional_data'] = array_merge($eski, $yangi);
+        return $data;
     }
 }
