@@ -36386,7 +36386,7 @@ bxx(a,b,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,b0,b1,b2,b3,b4,b5,b6){var s=0,r=A.z(t.H),q
 var $async$Hi=A.v(function(b7,b8){if(b7===1){o.push(b8)
 s=p}for(;;)switch(s){case 0:A.en(null,null,!1,null,new A.aln(),a1,null,!0,t.z)
 p=4
-n=A.bnJ("POST",A.i5("https://web-production-53ebe.up.railway.app/api/register",0,null))
+n=A.bnJ("POST",A.i5("https://kuhostel.up.railway.app/api/register",0,null))
 n.r.n(0,"Accept","application/json")
 m=new A.alo(n)
 m.$2("full_name",a7)
@@ -129631,7 +129631,7 @@ A.b0N.prototype={
 $1(a){return new A.xx(this.b,this.c,this.a.a.r,null)},
 $S:894}
 A.cc.prototype={
-vl(a){return A.i5("https://web-production-53ebe.up.railway.app/api/"+B.d.iP(B.d.iP(B.d.S(a),A.cq("^/+",!0,!1),""),A.cq("^api/",!0,!1),""),0,null)},
+vl(a){return A.i5("https://kuhostel.up.railway.app/api/"+B.d.iP(B.d.iP(B.d.S(a),A.cq("^/+",!0,!1),""),A.cq("^api/",!0,!1),""),0,null)},
 nE(a,b){return this.avn(a,b)},
 avm(){return this.nE(!0,null)},
 avn(a,b){var s=0,r=A.z(t.GU),q,p,o,n
@@ -134544,7 +134544,7 @@ s=7
 return A.p(A.WP(),$async$va)
 case 7:k=a1
 if(k==null||k.length===0){g=A.cY("Sessiya tugagan. Qaytadan login qiling.")
-throw A.f(g)}j=A.bnJ("POST",A.i5("https://web-production-53ebe.up.railway.app/api/payments",0,null))
+throw A.f(g)}j=A.bnJ("POST",A.i5("https://kuhostel.up.railway.app/api/payments",0,null))
 j.r.n(0,"Accept","application/json")
 j.r.n(0,"Authorization","Bearer "+k)
 g=j.x

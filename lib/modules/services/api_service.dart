@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   static const String baseUrl =
-      'https://web-production-53ebe.up.railway.app/api';
+      'https://kuhostel.up.railway.app/api';
 
   static const Duration _timeout = Duration(seconds: 30);
   static const String _tokenKey = 'sanctum_token';
