@@ -1,8 +1,8 @@
 enum RoomStatus {
-  empty('BoвЂsh'),
+  empty('Bo’sh'),
   occupied('Band'),
-  paymentPending('ToвЂlov kutilmoqda'),
-  renovation('TaвЂ™mirlashda');
+  paymentPending('To’lov kutilmoqda'),
+  renovation('Ta’mirlashda');
 
   final String displayName;
 

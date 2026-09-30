@@ -15,7 +15,7 @@ import '../modules/widgets/application_stepper.dart';
 import '../modules/services/api_service.dart';
 import '../modules/services/excel_download.dart';
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Colors РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Colors ────────────────────────────────────────────────────
 class _C {
   static const bgBase = Color(0xFF0F0D1A);
   static const bgCard = Color(0xFF1E1B2E);
@@ -32,7 +32,7 @@ class _C {
   static const faint = Color(0x0FFFFFFF);
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Screen (shell with 4 working tabs) РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Screen (shell with 4 working tabs) ─────────────────────────
 class TalabaProfileScreen extends StatefulWidget {
   final UserModel user;
 
@@ -163,7 +163,7 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
         onSelect: _selectFromDrawer,
         hasRoom: _user.hasRoom,
       ),
-      // Standart Flutter AppBar ishlatilyapti РІР‚вЂќ "drawer" berilgan bo'lsa,
+      // Standart Flutter AppBar ishlatilyapti — "drawer" berilgan bo'lsa,
       // Flutter menyu (hamburger) belgisini AVTOMATIK qo'shadi va uni bosish
       // kafolatlangan holda ishlaydi. Bu sahifalarning o'z sarlavhalari bilan
       // ustma-ust tushib qolish muammosini butunlay yo'q qiladi, chunki
@@ -178,7 +178,7 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
           statusBarIconBrightness: Brightness.light,
         ),
       ),
-      // Sahifalar endi to'liq ekranni egallaydi РІР‚вЂќ eski pastki navbar olib
+      // Sahifalar endi to'liq ekranni egallaydi — eski pastki navbar olib
       // tashlandi, chunki u har bir sahifaning o'z FloatingActionButton
       // tugmasini (masalan "Murojaat yozish") yashirib qo'yayotgan edi.
       body: IndexedStack(index: _tab, children: pages),
@@ -186,7 +186,7 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Talaba uchun yon menyu (Drawer) РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Talaba uchun yon menyu (Drawer) ────────────────────────────
 class _TalabaDrawer extends StatelessWidget {
   final String userName;
   final String userEmail;
@@ -314,7 +314,7 @@ String _applicationStepTitle(UserModel user) {
     case 4:
       return "Chek moliyaga yuborildi, tasdiqlash kutilmoqda";
     case 5:
-      return "To'lov tasdiqlandi РІР‚вЂќ jarayon yakunlandi";
+      return "To'lov tasdiqlandi — jarayon yakunlandi";
     default:
       return "Ariza holati";
   }
@@ -337,7 +337,7 @@ String? _applicationStepMessage(UserModel user) {
   return null;
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ "Bosh" (Home) tab РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── "Bosh" (Home) tab ───────────────────────────────────────────
 class _BoshTab extends StatelessWidget {
   final UserModel user;
   final String roleLabel;
@@ -506,7 +506,7 @@ class _QuickActionCard extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ "Yotoqxona" (Room) tab РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── "Yotoqxona" (Room) tab ──────────────────────────────────────
 class _YotoqxonaTab extends StatelessWidget {
   final UserModel user;
 
@@ -748,7 +748,7 @@ class _YotoqxonaTab extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ "Profil" tab (original profile content) РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── "Profil" tab (original profile content) ─────────────────────
 class _ProfilTab extends StatelessWidget {
   final UserModel user;
   final String roleLabel;
@@ -796,19 +796,19 @@ class _ProfilTab extends StatelessWidget {
                       _InfoRow(
                         icon: Icons.badge_outlined,
                         label: 'Ism familya',
-                        value: user.fullName.isNotEmpty ? user.fullName : 'РІР‚вЂќ',
+                        value: user.fullName.isNotEmpty ? user.fullName : '—',
                       ),
                       _InfoRow(
                         icon: Icons.phone_outlined,
                         label: 'Telefon',
                         value: user.phoneNumber.isNotEmpty
                             ? user.phoneNumber
-                            : 'РІР‚вЂќ',
+                            : '—',
                       ),
                       _InfoRow(
                         icon: Icons.email_outlined,
                         label: 'Email',
-                        value: user.email.isNotEmpty ? user.email : 'РІР‚вЂќ',
+                        value: user.email.isNotEmpty ? user.email : '—',
                       ),
                       _InfoRow(
                         icon: Icons.cake_outlined,
@@ -852,7 +852,7 @@ class _ProfilTab extends StatelessWidget {
                       _InfoRow(
                         icon: Icons.perm_identity_outlined,
                         label: 'Student ID',
-                        value: user.studentId ?? 'РІР‚вЂќ',
+                        value: user.studentId ?? '—',
                         valueMuted: user.studentId == null,
                       ),
                       _InfoRow(
@@ -923,7 +923,7 @@ String _formatBirthDate(DateTime? d) {
   return '${two(d.day)}.${two(d.month)}.${d.year}';
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Glow Orb РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Glow Orb ──────────────────────────────────────────────────
 class _GlowOrb extends StatelessWidget {
   final Color color;
   final double size;
@@ -957,7 +957,7 @@ class _GlowOrb extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Top Bar РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Top Bar ───────────────────────────────────────────────────
 class _TopBar extends StatelessWidget {
   final VoidCallback? onEdit;
   final String? userId;
@@ -998,7 +998,7 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Notification Bell (unread badge) РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Notification Bell (unread badge) ─────────────────────────
 // Bildirishnoma qo'ng'irog'i - o'qilmagan xabarlar sonini ko'rsatadi.
 // Ilgari Firestore StreamBuilder orqali real vaqtda sanardi;
 // endi Laravel API'dan bir marta yuklanadi va ro'yxatdan
@@ -1137,7 +1137,7 @@ class _IconBtn extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Hero Card РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Hero Card ─────────────────────────────────────────────────
 class _HeroCard extends StatelessWidget {
   final UserModel user;
   final String roleLabel;
@@ -1285,7 +1285,7 @@ class _HeroCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            user.fullName.isNotEmpty ? user.fullName : 'РІР‚вЂќ',
+                            user.fullName.isNotEmpty ? user.fullName : '—',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
@@ -1440,8 +1440,8 @@ class _HeroIconBtn extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Stats Strip РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
-// Eslatma: bu yerdagi raqamlar hozircha 0 РІР‚вЂќ chunki "necha kun yashagan",
+// ─── Stats Strip ───────────────────────────────────────────────
+// Eslatma: bu yerdagi raqamlar hozircha 0 — chunki "necha kun yashagan",
 // "nechta to'lov" va "nechta ariza" kabi ma'lumotlar Firestore'dagi
 // boshqa to'plamlardan (masalan to'lovlar, arizalar) hisoblanishi kerak.
 // Hozircha vizual joy egallovchi sifatida qoldirildi.
@@ -1564,7 +1564,7 @@ class _StatBox extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Info Card РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Info Card ─────────────────────────────────────────────────
 class _InfoCard extends StatelessWidget {
   final String title;
   final Color iconColor;
@@ -1687,7 +1687,7 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Logout Button РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Logout Button ─────────────────────────────────────────────
 class _LogoutButton extends StatelessWidget {
   final VoidCallback onConfirmed;
 
@@ -1758,7 +1758,7 @@ class _LogoutButton extends StatelessWidget {
   }
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Edit Profile Sheet РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Edit Profile Sheet ───────────────────────────────────────────
 class _EditProfileSheet extends StatefulWidget {
   final UserModel user;
 

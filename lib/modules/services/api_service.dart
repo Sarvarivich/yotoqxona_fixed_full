@@ -187,7 +187,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogРІР‚Вlanib boРІР‚Вlmadi.');
+      throw ApiException(message: 'Internet bilan bog’lanib bo’lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -213,7 +213,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogРІР‚Вlanib boРІР‚Вlmadi.');
+      throw ApiException(message: 'Internet bilan bog’lanib bo’lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -239,7 +239,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogРІР‚Вlanib boРІР‚Вlmadi.');
+      throw ApiException(message: 'Internet bilan bog’lanib bo’lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -265,7 +265,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogРІР‚Вlanib boРІР‚Вlmadi.');
+      throw ApiException(message: 'Internet bilan bog’lanib bo’lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -291,7 +291,7 @@ class ApiService {
 
       return _handle(response);
     } on SocketException {
-      throw ApiException(message: 'Internet bilan bogРІР‚Вlanib boРІР‚Вlmadi.');
+      throw ApiException(message: 'Internet bilan bog’lanib bo’lmadi.');
     } on TimeoutException {
       throw ApiException(message: 'Server javob berish vaqti tugadi.');
     }
@@ -377,7 +377,7 @@ class ApiService {
   /// Qaytaradi: { 'data': List<dynamic>, 'meta': Map }
   /// meta ichida: current_page, last_page, per_page, total
   ///
-  /// 2500 talabada hammasini bir marta yuklash mumkin emas РІР‚вЂќ
+  /// 2500 talabada hammasini bir marta yuklash mumkin emas —
   /// javob hajmi bir necha megabayt bo'ladi va ilova qotadi.
   Future<Map<String, dynamic>> getStudentsPaged({
     int page = 1,
@@ -799,7 +799,7 @@ class ApiService {
       return Uint8List(0);
     } on SocketException {
       throw ApiException(
-        message: 'Internet bilan bogРІР‚Вlanib boРІР‚Вlmadi.',
+        message: 'Internet bilan bog’lanib bo’lmadi.',
       );
     } on TimeoutException {
       throw ApiException(
@@ -852,7 +852,7 @@ class ApiService {
       return _handle(response);
     } on SocketException {
       throw ApiException(
-        message: 'Internet bilan bogРІР‚Вlanib boРІР‚Вlmadi.',
+        message: 'Internet bilan bog’lanib bo’lmadi.',
       );
     } on TimeoutException {
       throw ApiException(

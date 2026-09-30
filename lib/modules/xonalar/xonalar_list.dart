@@ -225,7 +225,7 @@ class _XonalarListState extends State<XonalarList> {
       ),
     );
 
-    // Oynadan qaytgach ro'yxatni yangilaymiz вЂ” bandlik o'zgargan
+    // Oynadan qaytgach ro'yxatni yangilaymiz — bandlik o'zgargan
     // bo'lishi mumkin.
     if (mounted) await _loadRooms();
   }

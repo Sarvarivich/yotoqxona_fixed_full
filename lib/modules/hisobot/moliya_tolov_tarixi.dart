@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
-// в”Ђв”Ђв”Ђ Moliya bo'limi вЂ” To'lovlar / to'lov tarixi в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// ─── Moliya bo'limi — To'lovlar / to'lov tarixi ────────────────────
 // Tasdiqlangan barcha to'lovlarni xronologik tartibda ko'rsatadi,
 // qidiruv va jami summa bilan.
 //
-// рџЊЌ Ikki manbadan BIRGALIKDA (jonli) o'qiladi, shunda o'g'il bolalar
+// 🌍 Ikki manbadan BIRGALIKDA (jonli) o'qiladi, shunda o'g'il bolalar
 // va qiz bolalar to'lovlari bitta ro'yxatda ko'rinadi:
-//   a) 'tolov_cheklari' (status == 'approved') вЂ” talaba o'zi chek
+//   a) 'tolov_cheklari' (status == 'approved') — talaba o'zi chek
 //      yuborib, moliyachi tasdiqlagan to'lovlar (ikkala hostel uchun
 //      ham, chunki bu yerga 'hostel' maydoni bilan yoziladi).
-//   b) 'girls_payments' (status == 'paid') вЂ” qiz bolalar uchun
+//   b) 'girls_payments' (status == 'paid') — qiz bolalar uchun
 //      admin/mudira tomonidan QO'LDA kiritilgan to'lovlar (odatda
 //      Firebase Auth hisobi yo'q, o'zi chek yubora olmaydigan
 //      'girls_students' talabalari uchun). Bu yozuvlarning bir qismi
 //      chekni tasdiqlash paytida avtomatik yaratiladi va 'sourceCheckId'
-//      maydoniga ega bo'ladi вЂ” ular allaqachon (a) manbada bor, shu
+//      maydoniga ega bo'ladi — ular allaqachon (a) manbada bor, shu
 //      sabab takrorlanmasligi uchun bu yerda o'tkazib yuboriladi.
 class _C {
   static const bgBase = Color(0xFF0F0D1A);
@@ -301,7 +301,7 @@ class _HistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String dateStr = 'вЂ”';
+    String dateStr = '—';
     if (data.date != null) {
       final dt = data.date!;
       dateStr =

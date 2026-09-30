@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/uzbekistan_region.dart';
 import '../services/api_service.dart';
 
-// в”Ђв”Ђв”Ђ Creative LIGHT palette (talabalar ro'yxati bilan bir xil til) в”Ђв”Ђв”Ђ
+// ─── Creative LIGHT palette (talabalar ro'yxati bilan bir xil til) ───
 class _C {
   static const bg = Color(0xFFF3F1FB);
   static const card = Colors.white;
@@ -18,7 +18,7 @@ class _C {
   static const faint = Color(0xFFE9E5FA);
 }
 
-/// "Umumiy ro'yxat" вЂ” O'g'il va qiz bolalar yotoqxonalaridagi BARCHA
+/// "Umumiy ro'yxat" — O'g'il va qiz bolalar yotoqxonalaridagi BARCHA
 /// talabalarni bitta jadvalda, qidiruv va viloyat bo'yicha filtr bilan
 /// ko'rsatadigan admin bo'limi.
 ///
@@ -82,7 +82,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
         if (x is Map) xonalar.add(Map<String, dynamic>.from(x));
       }
     } catch (_) {
-      // Xonalar yuklanmasa ro'yxat baribir ko'rinadi вЂ”
+      // Xonalar yuklanmasa ro'yxat baribir ko'rinadi —
       // faqat xona ustuni "Biriktirilmagan" bo'ladi.
     }
 
@@ -188,7 +188,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
             final allData =
                 malumot?.talabalar ?? const <Map<String, dynamic>>[];
 
-            // в”Ђв”Ђ Filtrlash: yotoqxona turi, viloyat, qidiruv в”Ђв”Ђ
+            // ── Filtrlash: yotoqxona turi, viloyat, qidiruv ──
             final filtered = allData.where((d) {
               final hostel = (d['hostel'] ?? 'boys').toString().toLowerCase();
               if (_selectedHostel != 'Barchasi' && hostel != _selectedHostel) {
@@ -293,7 +293,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
           );
 
           // Tor ekranda statistik chiplar sarlavha bilan bitta qatorga
-          // sig'may, o'ng chetdan kesilib qolardi вЂ” endi ular sarlavha
+          // sig'may, o'ng chetdan kesilib qolardi — endi ular sarlavha
           // ostiga tushadi.
           if (constraints.maxWidth < 520) {
             return Column(
@@ -345,7 +345,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Qidiruv maydoni qat'iy 280px edi вЂ” juda tor ekranda bu
+          // Qidiruv maydoni qat'iy 280px edi — juda tor ekranda bu
           // o'zi ham chetdan chiqib ketardi. Endi mavjud kenglikdan
           // oshmaydi.
           final searchWidth =
@@ -475,7 +475,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
     );
   }
 
-  // Har bir talaba вЂ” o'z ichida barcha ma'lumot (FIO, telefon, JSHSHIR,
+  // Har bir talaba — o'z ichida barcha ma'lumot (FIO, telefon, JSHSHIR,
   // fakultet/kurs, viloyat, yotoqxona, xona holati) joylashgan alohida
   // kartochka. Gorizontal skroll shart emas.
   Widget _buildCardList(
@@ -642,7 +642,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
     );
   }
 
-  // Xona tanlash oynasi вЂ” talabaning o'z yotoqxonasidagi (boys/girls)
+  // Xona tanlash oynasi — talabaning o'z yotoqxonasidagi (boys/girls)
   // barcha xonalarini ko'rsatadi va tanlangan xonaga darhol biriktiradi.
   Future<void> _showRoomPickerDialog(
     BuildContext context, {
@@ -652,7 +652,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
   }) async {
     // Xonalar Laravel API'dan olinadi. Bino (hostel) ma'lumoti
     // xonaning o'zida yoki bog'langan hostel obyektida bo'lishi
-    // mumkin вЂ” ikkalasini ham tekshiramiz.
+    // mumkin — ikkalasini ham tekshiramiz.
     final barchaXonalar = <Map<String, dynamic>>[];
     try {
       for (final x in await _api.getRooms()) {
@@ -674,7 +674,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
       var xom = '';
       final h = data['hostel'];
       if (h is Map) {
-        // Bog'langan obyekt вЂ” nomidan aniqlaymiz
+        // Bog'langan obyekt — nomidan aniqlaymiz
         final nom = (h['name'] ?? '').toString().toLowerCase();
         xom = nom.contains('qiz') ? 'girls' : 'boys';
       } else {
@@ -693,7 +693,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
         return an.compareTo(bn);
       });
 
-    // Talaba hozir qaysi xonada ekanini bilamiz вЂ” o'sha xona
+    // Talaba hozir qaysi xonada ekanini bilamiz — o'sha xona
     // "band" deb belgilanmasin.
     final hozirgiXonaId = (await _malumot).xonaIdlari[studentDocId];
 
@@ -745,7 +745,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            "$fullName вЂ” qaysi xonaga biriktirilsin?",
+                            "$fullName — qaysi xonaga biriktirilsin?",
                             style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14.5,
@@ -760,7 +760,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                       // Xonalarni 2 guruhga ajratamiz: bo'sh (joy bor
                       // yoki talaba hozir shu yerda) va band (to'lgan).
                       //
-                      // Laravel'da xonada studentIds massivi yo'q вЂ”
+                      // Laravel'da xonada studentIds massivi yo'q —
                       // bandlik current_occupants ustunida saqlanadi.
                       final available = <Map<String, dynamic>>[];
                       final full = <Map<String, dynamic>>[];
@@ -935,7 +935,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        "$floor-qavat В· $occupants/$capacity joy",
+                        "$floor-qavat · $occupants/$capacity joy",
                         style: TextStyle(
                           fontSize: 12,
                           color: isFull ? _C.coral : _C.muted,
@@ -997,7 +997,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
         roomId: roomId,
       );
 
-      // Ro'yxatni yangilaymiz вЂ” yangi xona darhol ko'rinsin.
+      // Ro'yxatni yangilaymiz — yangi xona darhol ko'rinsin.
       if (mounted) await _qaytaYukla();
 
       if (context.mounted) {

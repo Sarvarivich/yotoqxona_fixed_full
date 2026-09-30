@@ -73,7 +73,7 @@ class UserModel {
   /// "101-xona" deb chiqarish uchun [roomNumber] dan foydalaning.
   final String? roomId;
 
-  /// Xona raqami вЂ” "101", "203" kabi. Ekranda shu ko'rsatiladi.
+  /// Xona raqami — "101", "203" kabi. Ekranda shu ko'rsatiladi.
   ///
   /// Laravel javobidagi active_room_assignment.room.room_number dan
   /// olinadi. Eski Firestore'da roomId maydonining o'zida raqam
@@ -222,7 +222,7 @@ class UserModel {
         return 'Universitet yotoqxonasi';
 
       case 'avto_yol':
-        return 'Avto yoвЂl yotoqxonasi';
+        return 'Avto yo’l yotoqxonasi';
 
       case 'med_college':
         return 'Med kollej yotoqxonasi';
@@ -238,7 +238,7 @@ class UserModel {
           return 'Qizlar yotoqxonasi';
         }
 
-        return 'OвЂgвЂil bolalar yotoqxonasi';
+        return 'O’g’il bolalar yotoqxonasi';
     }
   }
 
@@ -385,7 +385,7 @@ class UserModel {
     );
 
     // Eski Firestore: roomId maydonida raqam bo'lishi mumkin.
-    // UUID'da defis bor, raqamda yo'q вЂ” shu bilan farqlaymiz.
+    // UUID'da defis bor, raqamda yo'q — shu bilan farqlaymiz.
     if (activeRoomNumber == null &&
         activeRoomId != null &&
         !activeRoomId.contains('-')) {

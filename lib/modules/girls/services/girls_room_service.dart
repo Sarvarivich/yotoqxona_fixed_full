@@ -90,7 +90,9 @@ class GirlsRoomService {
       'current_occupants': room.currentOccupants,
       'status': room.status.name,
       'hostel': 'girls',
-      'hostel_type': 'girls',
+      // hostel_type xonaning TURI ('university', 'medical'...),
+      // binosi emas. Bino 'hostel' maydonida.
+      'hostel_type': 'university',
       'price_per_month': room.pricePerMonth,
       'amenities': room.amenities,
     });
@@ -103,7 +105,9 @@ class GirlsRoomService {
       'capacity': room.capacity,
       'status': room.status.name,
       'hostel': 'girls',
-      'hostel_type': 'girls',
+      // hostel_type xonaning TURI ('university', 'medical'...),
+      // binosi emas. Bino 'hostel' maydonida.
+      'hostel_type': 'university',
       'price_per_month': room.pricePerMonth,
       'amenities': room.amenities,
     });

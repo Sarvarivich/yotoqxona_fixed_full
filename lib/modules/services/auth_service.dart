@@ -79,13 +79,13 @@ class AuthService {
   /// Talabaning o'zi ro'yxatdan o'tishi.
   ///
   /// Endi to'liq Laravel API orqali: POST /api/register.
-  /// Backend bir so'rovda hammasini bajaradi вЂ” foydalanuvchi
+  /// Backend bir so'rovda hammasini bajaradi — foydalanuvchi
   /// yaratish, ijtimoiy imtiyoz hujjatlarini saqlash, ariza ochish
   /// (2-bosqich, "ko'rib chiqilmoqda") va Sanctum tokeni berish.
   ///
   /// Ilgari bu metod Firebase Auth'da hisob ochib, hujjatlarni
   /// Supabase'ga yuklab, profilni Firestore'ga yozardi. Uch qadam,
-  /// uchtasi ham alohida buzilishi mumkin edi вЂ” va Firebase
+  /// uchtasi ham alohida buzilishi mumkin edi — va Firebase
   /// sozlanmagan platformalarda (masalan Windows) umuman ishlamasdi.
   static Future<void> registerAndLoginUser({
     required BuildContext context,
@@ -184,7 +184,7 @@ class AuthService {
         throw Exception(_registerXato(tana));
       }
 
-      // Token darhol saqlanadi вЂ” talaba qayta login qilmasdan
+      // Token darhol saqlanadi — talaba qayta login qilmasdan
       // tizimga kiradi.
       final token = tana['token']?.toString();
       if (token != null && token.isNotEmpty) {

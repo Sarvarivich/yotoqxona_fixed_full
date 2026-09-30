@@ -10,7 +10,7 @@ import '../modules/hisobot/qarzdorlar_royxati.dart';
 import '../modules/services/auth_service.dart';
 import '../modules/services/api_service.dart';
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Moliyachi (Moliya bo'limi) profili РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Moliyachi (Moliya bo'limi) profili ─────────────────────────────
 // Bu profil talabalarning to'lov cheklari bo'yicha murojaatlarini
 // tasdiqlaydi/rad etadi, to'lov tarixini, byudjet va xarajatlar
 // hisobotini hamda qarzdorlar ro'yxatini boshqaradi.
@@ -227,7 +227,7 @@ class _MoliyachiScreenState extends State<MoliyachiScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             child: Text(
-              "Yotoqxona Р’В· Versiya 1.0.0",
+              "Yotoqxona · Versiya 1.0.0",
               style: TextStyle(color: _C.muted, fontSize: 11),
             ),
           ),
@@ -347,7 +347,7 @@ class _NavItem {
   const _NavItem(this.label, this.activeIcon, this.icon, this.color);
 }
 
-// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Creative AppBar РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// ─── Creative AppBar ─────────────────────────────────────────────
 class _CreativeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final VoidCallback onMenuTap;

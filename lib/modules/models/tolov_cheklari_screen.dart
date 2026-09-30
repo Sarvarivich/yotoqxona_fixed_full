@@ -3,7 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import 'user_model.dart';
 
-// Creative LIGHT palette 
+// ─── Creative LIGHT palette ───
 class _LC {
   static const bg = Color(0xFFF3F1FB);
   static const card = Colors.white;
@@ -24,7 +24,7 @@ class TolovCheklariScreen extends StatefulWidget {
   /// qaytish tugmasi bosilganda chaqiriladigan callback.
   final VoidCallback? onBack;
 
-  /// Hozir tizimga kirgan foydalanuvchi (moliyachi/mudir/admin) 
+  /// Hozir tizimga kirgan foydalanuvchi (moliyachi/mudir/admin) —
   /// chekni kim tasdiqlagani yoki rad etganini yozib qo'yish uchun.
   final UserModel? currentUser;
 
@@ -51,9 +51,6 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _noteCtrl = TextEditingController();
-
-  // Moliyachi tasdiqlashda kiritadigan qoldiq qarz.
-  final _qoldiqCtrl = TextEditingController();
   final _searchController = TextEditingController();
   String _searchQuery = '';
   late String _selectedHostel;
@@ -62,7 +59,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    // Boshqa bo'limlardagi kabi, moliyachi/mudir/admin o'z yotoqxonasi
+    // ✅ Boshqa bo'limlardagi kabi, moliyachi/mudir/admin o'z yotoqxonasi
     // tanlangan holda ekranni ochadi, so'ngra "O'g'il bolalar" / "Qiz
     // bolalar" tugmalari orqali ikkalasi orasida almashtirishi mumkin.
     final forced = (widget.initialHostel ?? '').trim();
@@ -75,7 +72,6 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
   void dispose() {
     _tabController.dispose();
     _noteCtrl.dispose();
-    _qoldiqCtrl.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -93,7 +89,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
   String _str(dynamic value) => value?.toString() ?? '';
 
   String _formatDate(dynamic value, {bool withTime = false}) {
-    if (value == null) return '';
+    if (value == null) return '—';
     DateTime? dt;
     if (value is DateTime) {
       dt = value;
@@ -102,7 +98,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
     } else if (value is Map && value['date'] != null) {
       dt = DateTime.tryParse(value['date'].toString());
     }
-    if (dt == null) return _str(value).isEmpty ? '' : _str(value);
+    if (dt == null) return _str(value).isEmpty ? '—' : _str(value);
     final base =
         '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
     if (!withTime) return base;
@@ -115,7 +111,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
     final combined = '$name $raw';
     if (combined.contains('girl') ||
         combined.contains('qiz') ||
-        combined.contains('¶µ…') ||
+        combined.contains('жен') ||
         combined.contains('ayol')) {
       return 'girls';
     }
@@ -132,74 +128,13 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
     if (raw is! List) return <Map<String, dynamic>>[];
     return raw
         .whereType<Map>()
-        .map((e) => _tekislash(Map<String, dynamic>.from(e)))
+        .map((e) => Map<String, dynamic>.from(e))
         .toList();
-  }
-
-  /// Laravel javobidagi boglangan obyektlarni tekis maydonlarga
-  /// aylantiradi.
-  ///
-  /// Ekran student_name, room_number, payment_date kabi tekis
-  /// nomlarni oqiydi (eski Firestore shunday saqlardi). Laravel
-  /// esa boglangan obyekt qaytaradi: student: { full_name: ... }.
-  ///
-  /// Bu yerda bir marta tekislaganimiz uchun ekrandagi qolgan
-  /// kodga tegish shart emas.
-  Map<String, dynamic> _tekislash(Map<String, dynamic> d) {
-    final student = d['student'];
-    final room = d['room'];
-    final reviewer = d['reviewer'];
-    final hostelObj = d['hostel'];
-
-    String? olish(dynamic obj, String kalit) {
-      if (obj is! Map) return null;
-      final qiymat = obj[kalit];
-      if (qiymat == null) return null;
-      final matn = qiymat.toString().trim();
-      return matn.isEmpty ? null : matn;
-    }
-
-    // Talaba
-    d['student_name'] ??= olish(student, 'full_name') ??
-        olish(student, 'fullName');
-    d['student_email'] ??= olish(student, 'email');
-    d['student_phone'] ??= olish(student, 'phone');
-
-    // Xona
-    d['room_number'] ??=
-        olish(room, 'room_number') ?? olish(room, 'roomNumber');
-    d['room_floor'] ??= olish(room, 'floor');
-
-    // Sana: Laravel paid_at yozadi, ekran payment_date kutadi.
-    d['payment_date'] ??= d['paid_at'] ?? d['created_at'];
-
-    // Bino: xonaning hostel_type maydonida yoki boglangan
-    // hostel obyektining code maydonida.
-    final bino = olish(room, 'hostel_type') ?? olish(hostelObj, 'code');
-    if (bino != null) {
-      d['hostel'] = bino;
-    } else if (d['hostel'] is Map) {
-      d['hostel'] = null;
-    }
-    d['hostel_name'] ??= olish(hostelObj, 'name');
-
-    // Tasdiqlagan xodim: ilgari bu yerda UUID korinardi.
-    final reviewerName =
-        olish(reviewer, 'full_name') ?? olish(reviewer, 'fullName');
-    if (reviewerName != null) {
-      d['reviewed_by'] = reviewerName;
-    }
-
-    // Izoh
-    d['review_note'] ??= d['note'];
-
-    return d;
   }
 
   Future<void> _showApproveDialog(
       String id, String studentName, Map<String, dynamic> payment) async {
     _noteCtrl.clear();
-    _qoldiqCtrl.clear();
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -216,24 +151,6 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('$studentName ning to\'lovi tasdiqlanadi.'),
-            const SizedBox(height: 12),
-            // Moliyachi shu tolovdan keyin qancha qarz
-            // qolganini kiritadi. Bu qiymat talabaning
-            // joriy qarzi bolib qoladi va uning profilida
-            // korsatiladi.
-            TextField(
-              controller: _qoldiqCtrl,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Qoldiq summa (som)',
-                hintText: 'Masalan: 500000',
-                helperText: 'Bosh qoldirilsa oldingi qiymat saqlanadi',
-                prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            ),
             const SizedBox(height: 12),
             TextField(
               controller: _noteCtrl,
@@ -331,16 +248,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
     try {
       final body = <String, dynamic>{
         'status': status,
-        // Backend 'note' maydonini kutadi ('review_note' emas).
-        // Ilgari notogri nom yuborilgani uchun izohlar saqlanmasdi.
-        if (note.isNotEmpty) 'note': note,
-
-        // Qoldiq qarz. Faqat tasdiqlashda va faqat moliyachi
-        // kiritgan bolsa yuboriladi.
-        if (status == 'approved' && _qoldiqCtrl.text.trim().isNotEmpty)
-          'remaining_amount': double.tryParse(
-            _qoldiqCtrl.text.trim().replaceAll(' ', ''),
-          ),
+        'review_note': note.isNotEmpty ? note : null,
       };
       if (status == 'approved') {
         body['paid_at'] = DateTime.now().toIso8601String();
@@ -388,7 +296,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
-        // Orqaga qaytish tugmasi har doim ko'rinadi (tab sifatida ham,
+        // ✅ Orqaga qaytish tugmasi har doim ko'rinadi (tab sifatida ham,
         // push qilingan sahifa sifatida ham ishlatilganda)
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
@@ -426,7 +334,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
       ),
       body: Column(
         children: [
-          // ™» Yotoqxona turini tanlash boshqa bo'limlardagi kabi,
+          // 🚻 Yotoqxona turini tanlash — boshqa bo'limlardagi kabi,
           // to'lov cheklari ham "O'g'il bolalar" va "Qiz bolalar" uchun
           // alohida-alohida ko'rsatiladi.
           Padding(
@@ -488,7 +396,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
               ),
             ),
           ),
-          // Talaba ismi yoki sana bo'yicha qidiruv (admin va yotoqxona mudiri uchun)
+          // 🔎 Talaba ismi yoki sana bo'yicha qidiruv (admin va yotoqxona mudiri uchun)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
             child: Container(
@@ -652,9 +560,6 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
         ? _str(studentObj['full_name'] ?? studentObj['fullName'])
         : '';
 
-    // Moliyachi kiritgan qoldiq qarz (bolsa).
-    final qoldiq = d['remaining_amount'];
-
     final studentName = studentFromObj.isNotEmpty
         ? studentFromObj
         : _str(d['student_name']).isNotEmpty
@@ -674,7 +579,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
             ? _LC.coral
             : _LC.orange;
     final amount = d['amount'];
-    final amountText = amount == null ? '' : '$amount so\'m';
+    final amountText = amount == null ? '—' : '$amount so\'m';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -770,7 +675,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
                       icon: Icons.meeting_room_rounded,
                       label: 'Xona',
                       value: _str(d['room_number']).isEmpty
-                          ? ''
+                          ? '—'
                           : _str(d['room_number']))),
               const SizedBox(width: 10),
               Expanded(
@@ -778,7 +683,7 @@ class _TolovCheklariScreenState extends State<TolovCheklariScreen>
                       icon: Icons.calendar_month_rounded,
                       label: 'Davr',
                       value:
-                          _str(d['period']).isEmpty ? '' : _str(d['period']))),
+                          _str(d['period']).isEmpty ? '—' : _str(d['period']))),
             ]),
             if (_str(d['note']).isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -945,9 +850,9 @@ class _ReviewInfoBox extends StatelessWidget {
   });
 
   String get _dateStr {
-    if (reviewedAt == null) return '';
+    if (reviewedAt == null) return '—';
     final dt = DateTime.tryParse(reviewedAt.toString());
-    if (dt == null) return '';
+    if (dt == null) return '—';
     return '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
   }
 
@@ -965,21 +870,21 @@ class _ReviewInfoBox extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _ReviewRow(
-            emoji: isApproved ? '' : '',
+            emoji: isApproved ? '✅' : '❌',
             label: 'Holati',
             value: isApproved ? 'Tasdiqlangan' : 'Rad etilgan',
             color: color,
           ),
           const SizedBox(height: 8),
           _ReviewRow(
-            emoji: '¤',
+            emoji: '👤',
             label: isApproved ? 'Tasdiqlagan' : 'Rad etgan',
             value: reviewedBy.isNotEmpty ? reviewedBy : 'Noma\'lum xodim',
             color: color,
           ),
           const SizedBox(height: 8),
           _ReviewRow(
-            emoji: '',
+            emoji: '📅',
             label: 'Sana',
             value: _dateStr,
             color: color,
@@ -987,7 +892,7 @@ class _ReviewInfoBox extends StatelessWidget {
           if (reviewNote.isNotEmpty) ...[
             const SizedBox(height: 8),
             _ReviewRow(
-              emoji: '™¬',
+              emoji: '💬',
               label: 'Izoh',
               value: reviewNote,
               color: color,

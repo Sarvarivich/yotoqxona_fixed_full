@@ -4,7 +4,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:yotoqxona/modules/models/user_model.dart';
 import 'package:yotoqxona/modules/services/api_service.dart';
 
-// ─── Creative LIGHT palette ───
+// в”Ђв”Ђв”Ђ Creative LIGHT palette в”Ђв”Ђв”Ђ
 class _LC {
   static const bg = Color(0xFFF3F1FB);
   static const card = Colors.white;
@@ -42,6 +42,10 @@ class _TalabalarListState extends State<TalabalarList> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   late String _selectedHostel;
+
+  // Har bir binodagi jami foydalanuvchilar soni (tugmalarda korinadi).
+  int? _boysSoni;
+  int? _girlsSoni;
   String _roomFilter = 'all';
 
   bool _isLoading = true;
@@ -69,6 +73,7 @@ class _TalabalarListState extends State<TalabalarList> {
             .toLowerCase();
     _searchController.addListener(_onSearchChanged);
     _loadData();
+    _soniYukla();
   }
 
   // Qidiruv: har bosilgan harfda so'rov yubormaslik uchun
@@ -102,6 +107,8 @@ class _TalabalarListState extends State<TalabalarList> {
         page: _page + 1,
         perPage: _perPage,
         search: _searchQuery,
+        // Bino SERVERDA filtrlanadi.
+        hostel: _selectedHostel,
       );
 
       final royxat = javob['data'] as List<dynamic>;
@@ -165,6 +172,8 @@ class _TalabalarListState extends State<TalabalarList> {
         page: 1,
         perPage: _perPage,
         search: _searchQuery,
+        // Bino SERVERDA filtrlanadi.
+        hostel: _selectedHostel,
       );
       final studentsData = javob['data'] as List<dynamic>;
       final meta = javob['meta'] as Map<String, dynamic>;
@@ -239,6 +248,33 @@ class _TalabalarListState extends State<TalabalarList> {
     _scrollController.dispose();
     _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  /// Har bir binodagi jami sonni yuklaydi.
+  ///
+  /// Faqat bittadan yozuv soraladi (per_page=1) - bizga royxat
+  /// emas, faqat meta.total kerak. Shuning uchun tez ishlaydi.
+  Future<void> _soniYukla() async {
+    Future<int?> soni(String bino) async {
+      try {
+        final javob = await _apiService.getStudentsPaged(
+          page: 1,
+          perPage: 1,
+          hostel: bino,
+        );
+        final meta = javob['meta'];
+        if (meta is Map) return (meta['total'] as num?)?.toInt();
+      } catch (_) {}
+      return null;
+    }
+
+    final b = await soni('boys');
+    final g = await soni('girls');
+    if (!mounted) return;
+    setState(() {
+      _boysSoni = b;
+      _girlsSoni = g;
+    });
   }
 
   List<UserModel> _filterUsers(
@@ -361,8 +397,9 @@ class _TalabalarListState extends State<TalabalarList> {
                       setState(() {
                         _selectedHostel = "boys";
                       });
+                      _loadData();
                     },
-                    child: const Text("O'g'il bolalar"),
+                    child: Text(_boysSoni == null ? "O'g'il bolalar" : "O'g'il bolalar: $_boysSoni ta"),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -380,8 +417,9 @@ class _TalabalarListState extends State<TalabalarList> {
                       setState(() {
                         _selectedHostel = "girls";
                       });
+                      _loadData();
                     },
-                    child: const Text("Qiz bolalar"),
+                    child: Text(_girlsSoni == null ? "Qiz bolalar" : "Qiz bolalar: $_girlsSoni ta"),
                   ),
                 ),
               ],
@@ -691,7 +729,7 @@ class _TalabalarListState extends State<TalabalarList> {
     );
   }
 
-  // 🏠 "Barchasi / Biriktirilgan / Biriktirilmagan" filtr chiplari —
+  // рџЏ  "Barchasi / Biriktirilgan / Biriktirilmagan" filtr chiplari вЂ”
   // faqat talabalar ro'yxatini xona holati bo'yicha filtrlash uchun.
   Widget _buildRoomFilterChips() {
     Widget chip(String label, String value, IconData icon) {
@@ -749,13 +787,13 @@ class _TalabalarListState extends State<TalabalarList> {
     }
   }
 
-  // 🏠 Talabaga biriktirilgan xona haqida ma'lumot olish
+  // рџЏ  Talabaga biriktirilgan xona haqida ma'lumot olish
   Future<String?> _getAssignedRoomInfo(String userId) async {
     return _roomLabelById[userId];
   }
 
-  // 🌟 Dialogni ochishdan oldin (agar talaba bo'lsa) xona ma'lumotini
-  // oldindan yuklab olamiz — shu tufayli dialog ichida "Yuklanmoqda..."
+  // рџЊџ Dialogni ochishdan oldin (agar talaba bo'lsa) xona ma'lumotini
+  // oldindan yuklab olamiz вЂ” shu tufayli dialog ichida "Yuklanmoqda..."
   // holatida osilib qolish muammosi butunlay bartaraf etiladi.
   Future<void> _openUserManagementDialog(
       BuildContext context, UserModel selectedUser) async {
@@ -768,7 +806,7 @@ class _TalabalarListState extends State<TalabalarList> {
         assignedRoomInfo: roomInfo);
   }
 
-  // 🌟 ADMIN UCHUN TANLANGAN FOYDALANUVCHINI BOSGANDA CHIQUVCHI ASOSIY DIALOG
+  // рџЊџ ADMIN UCHUN TANLANGAN FOYDALANUVCHINI BOSGANDA CHIQUVCHI ASOSIY DIALOG
   void _showUserManagementDialog(BuildContext context, UserModel selectedUser,
       {String? assignedRoomInfo}) {
     showDialog(
@@ -868,7 +906,7 @@ class _TalabalarListState extends State<TalabalarList> {
                   ),
                 const Divider(),
 
-                // 🔐 5. ADMIN UCHUN PAROLNI TO'G'RIDAN-TO'G'RI YANGILASH
+                // рџ”ђ 5. ADMIN UCHUN PAROLNI TO'G'RIDAN-TO'G'RI YANGILASH
                 ListTile(
                   leading: const Icon(Icons.lock_open, color: _LC.coral),
                   title: const Text(
@@ -887,7 +925,7 @@ class _TalabalarListState extends State<TalabalarList> {
                 if (_canDelete) ...[
                   const Divider(),
 
-                  // 🗑️ 6. FOYDALANUVCHINI O'CHIRISH
+                  // рџ—‘пёЏ 6. FOYDALANUVCHINI O'CHIRISH
                   ListTile(
                     leading: const Icon(Icons.delete_forever, color: _LC.coral),
                     title: const Text(
@@ -920,7 +958,7 @@ class _TalabalarListState extends State<TalabalarList> {
     );
   }
 
-  // 📝 FOYDALANUVCHI MA'LUMOTLARINI (FIO, TELEFON) TAHRIRLASH DIALOGI
+  // рџ“ќ FOYDALANUVCHI MA'LUMOTLARINI (FIO, TELEFON) TAHRIRLASH DIALOGI
   void _editUserField(BuildContext context, UserModel selectedUser,
       String label, String fieldName, String currentValue) {
     final TextEditingController fieldController =
@@ -1012,13 +1050,13 @@ class _TalabalarListState extends State<TalabalarList> {
     );
   }
 
-  // 🔐 ADMIN UCHUN FOYDALANUVCHI PAROLINI MAJBURIY YANGILASH DIALOGI
+  // рџ”ђ ADMIN UCHUN FOYDALANUVCHI PAROLINI MAJBURIY YANGILASH DIALOGI
   void _adminChangeUserPassword(BuildContext context, UserModel selectedUser) {
     final TextEditingController newPasswordController = TextEditingController();
     final TextEditingController confirmPasswordController =
         TextEditingController();
     final passwordFormKey = GlobalKey<FormState>();
-    // 🔓 Standart holatda KO'RINADIGAN qilib qo'ydik (yashirin emas) —
+    // рџ”“ Standart holatda KO'RINADIGAN qilib qo'ydik (yashirin emas) вЂ”
     // chunki bu SuperAdmin BOSHQA birovning (talabaning) yangi parolini
     // o'rnatyapti, o'zining shaxsiy paroli emas. Yashirin bo'lsa, xato
     // yozilgan harf/raqamni hech kim ko'rmaydi va shu "ko'rinmas xato"
@@ -1074,7 +1112,7 @@ class _TalabalarListState extends State<TalabalarList> {
                       },
                     ),
                     const SizedBox(height: 12),
-                    // 🆕 Tasdiqlash maydoni: ikkala maydonga bir xil parol
+                    // рџ†• Tasdiqlash maydoni: ikkala maydonga bir xil parol
                     // yozilmasa, formani yuborib bo'lmaydi. Shu orqali
                     // ko'rinmas yozuv xatosi (typo) sababli talaba keyin
                     // "to'g'ri" parol bilan ham kira olmay qolishining oldi
@@ -1115,7 +1153,7 @@ class _TalabalarListState extends State<TalabalarList> {
                     final String newPassword =
                         newPasswordController.text.trim();
                     try {
-                      // ✅ Endi Firestore'ga emas — haqiqiy Firebase
+                      // вњ… Endi Firestore'ga emas вЂ” haqiqiy Firebase
                       // Authentication parolini serverdagi Cloud Function
                       // (Admin SDK) orqali yangilaydi. Shu tufayli
                       // o'zgartirilgan yangi parol bilan darhol kirish
@@ -1126,11 +1164,11 @@ class _TalabalarListState extends State<TalabalarList> {
                       if (context.mounted) {
                         Navigator.pop(context);
                         _openUserManagementDialog(context, selectedUser);
-                        // 📋 Yangi parolni aniq ko'rsatamiz va nusxalash
-                        // imkonini beramiz — shunda talabaga og'zaki yoki
+                        // рџ“‹ Yangi parolni aniq ko'rsatamiz va nusxalash
+                        // imkonini beramiz вЂ” shunda talabaga og'zaki yoki
                         // yozib aytilganda xato ketmaydi (aynan shu turdagi
                         // "typo" xatolari "email/parol xato" shikoyatlarining
-                        // eng ko'p uchraydigan sababi bo'lган).
+                        // eng ko'p uchraydigan sababi bo'lgan).
                         showDialog(
                           context: context,
                           builder: (_) => AlertDialog(

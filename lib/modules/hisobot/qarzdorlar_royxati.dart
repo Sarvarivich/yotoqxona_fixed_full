@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 
-// Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™ Moliya bo'limi Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ Qarzdorlar ro'yxati Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™Р В Р вЂ Р Р†Р вЂљРЎСљР В РІР‚С™
+// ─── Moliya bo'limi — Qarzdorlar ro'yxati ──────────────────────────
 // Xonaga biriktirilgan har bir talaba uchun uning BARCHA tasdiqlangan
 // (approved) to'lovlari yig'indisi xona narxidan kam bo'lsa, u
 // "qarzdor" deb hisoblanadi. Qarz miqdori = xona narxi - jami
@@ -32,7 +32,7 @@ class DebtorInfo {
   final double expected;
   final double paid;
 
-  /// 'boys' | 'girls' Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ talaba qaysi yotoqxonaga tegishli ekanini
+  /// 'boys' | 'girls' — talaba qaysi yotoqxonaga tegishli ekanini
   /// bildiradi, ro'yxatda belgi (badge) sifatida ko'rsatish uchun.
   final String hostel;
   double get debt => (expected - paid) < 0 ? 0 : (expected - paid);
@@ -50,7 +50,7 @@ class DebtorInfo {
 
 /// Barcha qarzdor talabalarni hisoblab beradi.
 /// Qarz = xonaning (bir oylik) narxi - talabaning BARCHA tasdiqlangan
-/// (approved) to'lovlari yig'indisi. Oyga bog'liq emas Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ talaba
+/// (approved) to'lovlari yig'indisi. Oyga bog'liq emas — talaba
 /// ro'yxatga olingandan beri to'lagan har qanday tasdiqlangan summa
 /// hisobga olinadi.
 /// Barcha qarzdor talabalarni hisoblab beradi.
@@ -349,7 +349,7 @@ class _QarzdorlarRoyxatiState extends State<QarzdorlarRoyxati> {
                             const SizedBox(height: 12),
                             Text(
                               all.isEmpty
-                                  ? "Bu oy uchun qarzdorlar yo'q Р РЋР вЂљР РЋРЎСџР В РІР‚в„–Р Р†Р вЂљР’В°"
+                                  ? "Bu oy uchun qarzdorlar yo'q 🎉"
                                   : "Qidiruv bo'yicha natija topilmadi",
                               style: TextStyle(color: _C.muted, fontSize: 13),
                             ),
@@ -552,7 +552,7 @@ class _DebtorCard extends StatelessWidget {
   }
 }
 
-/// Р РЋР вЂљР РЋРЎСџР РЋРІвЂћСћР вЂ™Р’В» "O'g'il bolalar" / "Qiz bolalar" belgisi Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ moliyachi ro'yxatda
+/// 🚻 "O'g'il bolalar" / "Qiz bolalar" belgisi — moliyachi ro'yxatda
 /// qaysi yotoqxonaga tegishli talaba ekanini bir qarashda ko'rishi uchun.
 class _HostelBadge extends StatelessWidget {
   final String hostel; // 'boys' | 'girls'

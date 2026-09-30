@@ -42,8 +42,8 @@ class _YotoqxonaTurlariScreenState extends State<YotoqxonaTurlariScreen> {
     ),
     _HostelTypeItem(
       type: 'avto_yol',
-      title: 'Avto yo‘l yotoqxonasi',
-      subtitle: 'Avto yo‘l hududidagi xonalar',
+      title: 'Avto yo’l yotoqxonasi',
+      subtitle: 'Avto yo’l hududidagi xonalar',
       icon: Icons.directions_car_rounded,
     ),
     _HostelTypeItem(
@@ -55,11 +55,21 @@ class _YotoqxonaTurlariScreenState extends State<YotoqxonaTurlariScreen> {
     _HostelTypeItem(
       type: 'rental',
       title: 'Ijara uchun ajratilgan',
-      subtitle: 'Ijara bo‘yicha ajratilgan joylar',
+      subtitle: 'Ijara bo’yicha ajratilgan joylar',
       icon: Icons.home_work_rounded,
     ),
   ];
 
+  /// Yotoqxona turi uchun belgilangan joy soni.
+  ///
+  /// MUHIM: bu raqam BITTA bino uchun. Universitet yotoqxonasida
+  /// jami 500 joy bor: 250 tasi qizlar, 250 tasi o'g'il bolalar
+  /// binosida. Ekran bir vaqtda faqat bitta binoni ko'rsatadi,
+  /// shuning uchun bu yerda 250 qaytariladi.
+  ///
+  /// Ilgari 500 qaytarilardi va "Qolgan" ustuni ikki binoning
+  /// yig'indisidan hisoblanardi - natijada o'g'il bolalar tomonida
+  /// qizlar binosidagi bandlik ham ko'rinardi.
   int _targetStudentsFor(String type) {
     switch (type) {
       case 'university':
@@ -75,6 +85,16 @@ class _YotoqxonaTurlariScreenState extends State<YotoqxonaTurlariScreen> {
       default:
         return 0;
     }
+  }
+
+  /// Xona shu binoga tegishlimi.
+  ///
+  /// Laravel'da bino xonaning `hostel_type` ustunida ('boys'/'girls')
+  /// saqlanadi. RoomModel uni `hostel` maydoniga o'qiydi.
+  bool _shuBino(RoomModel r) {
+    final bino = r.hostel.trim().toLowerCase();
+    final kerak = widget.genderHostel.trim().toLowerCase();
+    return (bino.isEmpty ? 'boys' : bino) == (kerak.isEmpty ? 'boys' : kerak);
   }
 
   @override
@@ -200,10 +220,29 @@ class _YotoqxonaTurlariScreenState extends State<YotoqxonaTurlariScreen> {
                           var count = 0;
                           for (final doc in _students) {
                             if (doc is! Map) continue;
-                            final role = (doc['role'] ?? 'talaba').toString().trim().toLowerCase();
+                            final role = (doc['role'] ?? 'talaba')
+                                .toString()
+                                .trim()
+                                .toLowerCase();
                             if (role != 'talaba' && role != 'student') continue;
 
-                            final raw = (doc['hostelAssignmentType'] ?? doc['hostelType'] ?? doc['hostel_type'] ?? '').toString();
+                            // Faqat shu binoning talabalari.
+                            final talabaBino = (doc['hostel'] ?? 'boys')
+                                .toString()
+                                .trim()
+                                .toLowerCase();
+                            final kerakBino =
+                                widget.genderHostel.trim().toLowerCase();
+                            if (talabaBino !=
+                                (kerakBino.isEmpty ? 'boys' : kerakBino)) {
+                              continue;
+                            }
+
+                            final raw = (doc['hostelAssignmentType'] ??
+                                    doc['hostelType'] ??
+                                    doc['hostel_type'] ??
+                                    '')
+                                .toString();
                             if (raw.trim().isEmpty) continue;
 
                             if (_normalizeAssignmentType(raw) == type) {
@@ -214,12 +253,18 @@ class _YotoqxonaTurlariScreenState extends State<YotoqxonaTurlariScreen> {
                           continue;
                         }
 
-                        final typeRooms = _rooms.where((r) => r.hostelType == type).toList();
+                        // Faqat shu binoning xonalari. Ilgari filtr
+                        // yo'q edi va qizlar binosidagi bandlik ham
+                        // o'g'il bolalar tomonida ko'rinardi.
+                        final typeRooms = _rooms
+                            .where((r) => r.hostelType == type && _shuBino(r))
+                            .toList();
                         var count = 0;
                         for (final room in typeRooms) {
                           final idsCount = room.studentIds.length;
                           final storedCount = room.currentOccupants;
-                          count += idsCount > storedCount ? idsCount : storedCount;
+                          count +=
+                              idsCount > storedCount ? idsCount : storedCount;
                         }
                         assignedByType[type] = count;
                       }
@@ -235,13 +280,17 @@ class _YotoqxonaTurlariScreenState extends State<YotoqxonaTurlariScreen> {
                               runSpacing: gap,
                               children: _items.map((item) {
                                 final typeRooms = _rooms
-                                    .where((r) => r.hostelType == item.type)
+                                    .where((r) =>
+                                        r.hostelType == item.type &&
+                                        _shuBino(r))
                                     .toList();
-                                final targetStudents = _targetStudentsFor(item.type);
+                                final targetStudents =
+                                    _targetStudentsFor(item.type);
                                 final assigned = assignedByType[item.type] ?? 0;
 
                                 int occupantsOf(RoomModel r) {
-                                  return r.currentOccupants > r.studentIds.length
+                                  return r.currentOccupants >
+                                          r.studentIds.length
                                       ? r.currentOccupants
                                       : r.studentIds.length;
                                 }
@@ -393,7 +442,7 @@ class _HostelTypeCard extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 item.type == 'university'
-                    ? 'Belgilangan: 500 ta (250 qizlar • 250 o‘g‘il bolalar)'
+                    ? 'Belgilangan: 500 ta joy'
                     : item.subtitle,
                 maxLines: 2,
                 softWrap: true,
@@ -428,7 +477,7 @@ class _HostelTypeCard extends StatelessWidget {
                       SizedBox(
                         width: itemWidth,
                         child:
-                            _MiniStat(label: 'Bo‘sh xona', value: '$freeRooms'),
+                            _MiniStat(label: 'Bo’sh xona', value: '$freeRooms'),
                       ),
                       SizedBox(
                         width: itemWidth,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // SignOut kafolatli ishlashi uchun
 import 'package:yotoqxona/modules/models/tolov_cheklari_screen.dart';
@@ -16,7 +18,7 @@ import '../modules/models/ijtimoiy_imtiyozlar_sahifasi.dart';
 import '../modules/umumiy/umumiy_royxat_sahifasi.dart';
 // Umumiy ro'yxat: barcha yotoqxonalar bo'yicha talabalar, qidiruv + viloyat filtri
 
-// в”Ђв”Ђв”Ђ Creative dark palette (talaba dizayni bilan bir xil til) в”Ђв”Ђв”Ђ
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Creative dark palette (talaba dizayni bilan bir xil til) РІвЂќР‚РІвЂќР‚РІвЂќР‚
 class _C {
   static const bgBase = Color(0xFF0F0D1A);
   static const bgCard = Color(0xFF1A1730);
@@ -51,10 +53,10 @@ class _AdminScreenState extends State<AdminScreen> {
   // (o'chirish tugmalari va Ma'lumotlar bazasi bo'limi yashiriladi).
   bool get _isSuperAdmin => widget.user.role == UserRole.superAdmin;
 
-  // рџ”ђ Granular huquqlar вЂ” hasPermission() endi o'zi superAdmin uchun
-  // standart holatni (permissions xaritasida ANIQ qiymat bo'lmasa вЂ”
+  // СЂСџвЂќС’ Granular huquqlar РІР‚вЂќ hasPermission() endi o'zi superAdmin uchun
+  // standart holatni (permissions xaritasida ANIQ qiymat bo'lmasa РІР‚вЂќ
   // "ruxsat berilgan") hisobga oladi, shu sabab bu yerda alohida
-  // "_isSuperAdmin ||" bilan chetlab o'tishga hojat qolmadi вЂ” aks holda
+  // "_isSuperAdmin ||" bilan chetlab o'tishga hojat qolmadi РІР‚вЂќ aks holda
   // Rol boshqaruvida superAdmin uchun o'chirilgan huquqlar baribir
   // e'tiborga olinmay qolardi.
   bool get _canDeleteUsers => widget.user.hasPermission('canDeleteUsers');
@@ -82,7 +84,7 @@ class _AdminScreenState extends State<AdminScreen> {
         'accessSozlamalar'),
   ];
 
-  // рџ”’ Berilgan bo'lim (nav item) joriy foydalanuvchiga ochiqmi вЂ” Rol
+  // СЂСџвЂќвЂ™ Berilgan bo'lim (nav item) joriy foydalanuvchiga ochiqmi РІР‚вЂќ Rol
   // boshqaruvida shu foydalanuvchi (yoki superAdmin) uchun ushbu bo'lim
   // "access..." huquqi o'chirilgan bo'lsa, false qaytaradi va bo'lim
   // qulflangan holda ko'rsatiladi.
@@ -109,7 +111,7 @@ class _AdminScreenState extends State<AdminScreen> {
         genderHostel: widget.user.hostel ?? 'boys',
       ),
       // Admin endi BARCHA murojaatlarni ko'radi: ham o'ziga ("admin"),
-      // ham mudirga yuborilganlarni вЂ” har birida "kimga" va "kimdan"
+      // ham mudirga yuborilganlarni РІР‚вЂќ har birida "kimga" va "kimdan"
       // (yuboruvchi) ma'lumoti bilan birga.
       MurojaatlarList(
         isAdmin: true,
@@ -131,7 +133,7 @@ class _AdminScreenState extends State<AdminScreen> {
       _AdminSettingsTab(user: widget.user),
     ]);
 
-    // рџ”’ Agar standart bo'lim (Dashboard, index 0) ushbu foydalanuvchi
+    // СЂСџвЂќвЂ™ Agar standart bo'lim (Dashboard, index 0) ushbu foydalanuvchi
     // uchun "Rol boshqaruvi"da o'chirilgan bo'lsa, ekran ochilishidayoq
     // qulflangan bo'limni ko'rsatib qo'ymaslik uchun birinchi ruxsat
     // etilgan bo'limga o'tamiz.
@@ -141,7 +143,7 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  // 3пёЏвѓЈ Barcha foydalanuvchilar va admin uchun tizimdan chiqishni to'g'rilash
+  // 3РїС‘РЏРІС“Р€ Barcha foydalanuvchilar va admin uchun tizimdan chiqishni to'g'rilash
   void _logout() async {
     try {
       // FirebaseAuth.signOut() olib tashlandi: Firebase sozlanmagan
@@ -165,10 +167,10 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  // Bu sahifalar o'z AppBar'iga ega вЂ” qobiqning AppBar'ini berkitamiz
-  // вљ пёЏ Umumiy ro'yxat bo'limi index 1'ga qo'shilgani sabab, undan keyingi
+  // Bu sahifalar o'z AppBar'iga ega РІР‚вЂќ qobiqning AppBar'ini berkitamiz
+  // РІС™В РїС‘РЏ Umumiy ro'yxat bo'limi index 1'ga qo'shilgani sabab, undan keyingi
   // o'z AppBar'iga ega sahifalarning indekslari bittaga suriladi:
-  // Talabalar va Hodimlar 1в†’2, Rol boshqaruvi 4в†’5, To'lov cheklari 5в†’6.
+  // Talabalar va Hodimlar 1РІвЂ вЂ™2, Rol boshqaruvi 4РІвЂ вЂ™5, To'lov cheklari 5РІвЂ вЂ™6.
   bool get _ownsAppBar =>
       _selectedIndex == 5 || _selectedIndex == 2 || _selectedIndex == 6;
 
@@ -210,7 +212,7 @@ class _AdminScreenState extends State<AdminScreen> {
       backgroundColor: _C.bgBase,
       child: Column(
         children: [
-          // в”Ђв”Ђв”Ђ Profil bezagi в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+          // РІвЂќР‚РІвЂќР‚РІвЂќР‚ Profil bezagi РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
@@ -304,7 +306,7 @@ class _AdminScreenState extends State<AdminScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             child: Text(
-              "Yotoqxona В· Versiya 1.0.0",
+              "Yotoqxona Р’В· Versiya 1.0.0",
               style: TextStyle(color: _C.muted, fontSize: 11),
             ),
           ),
@@ -315,9 +317,9 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _buildDrawerItem({required _NavItem item, required int index}) {
     final isActive = _selectedIndex == index;
-    // рџ”’ Ushbu foydalanuvchi uchun bu bo'lim "Rol boshqaruvi" orqali
+    // СЂСџвЂќвЂ™ Ushbu foydalanuvchi uchun bu bo'lim "Rol boshqaruvi" orqali
     // o'chirilgan bo'lsa (masalan cheklangan superAdmin/admin uchun),
-    // bo'lim menyuda ko'rinadi, lekin qulflangan holatda bo'ladi вЂ”
+    // bo'lim menyuda ko'rinadi, lekin qulflangan holatda bo'ladi РІР‚вЂќ
     // bosilganda ochilmaydi, faqat ruxsat yo'qligi haqida xabar chiqadi.
     final hasAccess = _hasAccess(item);
     return Padding(
@@ -386,14 +388,14 @@ class _AdminScreenState extends State<AdminScreen> {
                       ),
                     ),
                   ),
-                  // рџ› пёЏ MUHIM: "Umumiy ro'yxat" bo'limi menyuga qo'shilgach,
+                  // СЂСџвЂєВ РїС‘РЏ MUHIM: "Umumiy ro'yxat" bo'limi menyuga qo'shilgach,
                   // undan keyingi barcha bo'limlarning indeksi bittaga
-                  // surildi (yuqoridagi izohga qarang: Rol boshqaruvi 4в†’5,
-                  // To'lov cheklari 5в†’6). Bu yerdagi bildirishnoma nuqtachasi
+                  // surildi (yuqoridagi izohga qarang: Rol boshqaruvi 4РІвЂ вЂ™5,
+                  // To'lov cheklari 5РІвЂ вЂ™6). Bu yerdagi bildirishnoma nuqtachasi
                   // esa eski indeksga (5, ya'ni "Rol boshqaruvi"ga) bog'liq
-                  // bo'lib qolgan edi вЂ” shuning uchun talaba chek yuborganda
+                  // bo'lib qolgan edi РІР‚вЂќ shuning uchun talaba chek yuborganda
                   // "1" belgisi noto'g'ri joyda (Rol boshqaruvida) chiqardi.
-                  // To'g'ri joyi вЂ” index 6, ya'ni "To'lov cheklari".
+                  // To'g'ri joyi РІР‚вЂќ index 6, ya'ni "To'lov cheklari".
                   if (index == 6 && hasAccess) const _TolovBadgeDot(),
                   if (isActive)
                     Container(
@@ -460,7 +462,7 @@ class _NavItem {
       this.label, this.activeIcon, this.icon, this.color, this.permissionKey);
 }
 
-// в”Ђв”Ђв”Ђ Creative AppBar в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Creative AppBar РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 class _CreativeAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final VoidCallback onMenuTap;
@@ -486,7 +488,7 @@ class _CreativeAppBar extends StatelessWidget implements PreferredSizeWidget {
         color: showGradient ? null : Colors.transparent,
         gradient: showGradient
             ? const LinearGradient(
-                colors: [_C.purple, _C.violet], // #6C5CE7 в†’ #A29BFE
+                colors: [_C.purple, _C.violet], // #6C5CE7 РІвЂ вЂ™ #A29BFE
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               )
@@ -653,7 +655,7 @@ class _TolovBadgeDot extends StatelessWidget {
 class _RoleManagementTab extends StatefulWidget {
   final GlobalKey<ScaffoldState> scaffoldKey;
   final bool isSuperAdmin;
-  // Foydalanuvchini butunlay o'chirish huquqi вЂ” superAdmin doim, cheklangan
+  // Foydalanuvchini butunlay o'chirish huquqi РІР‚вЂќ superAdmin doim, cheklangan
   // "admin" esa faqat 'canDeleteUsers' huquqi berilgan bo'lsa.
   final bool canDelete;
   // O'zini-o'zi tasodifan o'chirib qo'ymasligi uchun joriy foydalanuvchi id'si.
@@ -675,30 +677,43 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
-  List<Map<String, dynamic>> get _filteredUsers {
-    if (_searchQuery.isEmpty) return _users;
-    final query = _searchQuery.toLowerCase();
-    return _users.where((user) {
-      final fullName =
-          (user['full_name'] ?? user['fullName'] ?? '')
-              .toString()
-              .toLowerCase();
-      final email = (user['email'] ?? '').toString().toLowerCase();
-      return fullName.contains(query) || email.contains(query);
-    }).toList();
-  }
+  // Sahifalash. Backend bir sorovda 50 tadan beradi.
+  int _sahifa = 1;
+  int _oxirgiSahifa = 1;
+  int _jami = 0;
+
+  // Qidiruvda har bosilgan harfga sorov yubormaslik uchun.
+  Timer? _kutish;
+
+  // Rol filtri. Bosh satr - barcha rollar.
+  String _rolFiltri = '';
+
+  // Qidiruv endi SERVERDA bajariladi - barcha foydalanuvchilar
+  // ichidan. Ilgari faqat yuklangan 100 ta ichida izlanardi.
+  List<Map<String, dynamic>> get _filteredUsers => _users;
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
     _searchController.addListener(() {
-      setState(() => _searchQuery = _searchController.text);
+      // 400 ms kutib, keyin serverdan izlaymiz. Qidiruv
+      // ozgarganda birinchi sahifaga qaytamiz.
+      final matn = _searchController.text;
+      if (matn == _searchQuery) return;
+      _kutish?.cancel();
+      _kutish = Timer(const Duration(milliseconds: 400), () {
+        if (!mounted) return;
+        setState(() => _searchQuery = matn);
+        _sahifa = 1;
+        _loadUsers();
+      });
     });
   }
 
   @override
   void dispose() {
+    _kutish?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -712,9 +727,13 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
       //
       // per_page=100 hozircha yetarli. 2500 foydalanuvchida bu ekranga
       // ham cheksiz aylantirish qo'shish kerak bo'ladi.
+      // Rol filtri YOQ - barcha rollar keladi: superAdmin, admin,
+      // mudir, moliyachi va talaba. Backend ruxsatni ozi tekshiradi.
       final javob = await ApiService().getStudentsPaged(
-        page: 1,
-        perPage: 100,
+        page: _sahifa,
+        perPage: 50,
+        role: _rolFiltri.isEmpty ? null : _rolFiltri,
+        search: _searchQuery.trim().isEmpty ? null : _searchQuery.trim(),
       );
       if (!mounted) return;
 
@@ -722,11 +741,177 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
+
+      final meta = javob['meta'];
+      if (meta is Map) {
+        _oxirgiSahifa = (meta['last_page'] as num?)?.toInt() ?? 1;
+        _jami = (meta['total'] as num?)?.toInt() ?? _users.length;
+      } else {
+        _oxirgiSahifa = 1;
+        _jami = _users.length;
+      }
     } catch (e) {
       debugPrint("Xatolik foydalanuvchilarni yuklashda: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// Berilgan sahifaga otadi.
+  void _otish(int sahifa) {
+    if (sahifa < 1 || sahifa > _oxirgiSahifa || sahifa == _sahifa) return;
+    setState(() => _sahifa = sahifa);
+    _loadUsers();
+  }
+
+  /// Korsatiladigan sahifa raqamlari.
+  ///
+  /// Kop sahifa bolsa qisqartiramiz: 1 2 3 ... 8
+  /// null - uch nuqta.
+  List<int?> _raqamlar() {
+    final n = _oxirgiSahifa;
+    final j = _sahifa;
+    if (n <= 7) return [for (var i = 1; i <= n; i++) i];
+
+    final natija = <int?>[1];
+    final bosh = (j - 1).clamp(2, n - 1);
+    final oxir = (j + 1).clamp(2, n - 1);
+
+    if (bosh > 2) natija.add(null);
+    for (var i = bosh; i <= oxir; i++) {
+      natija.add(i);
+    }
+    if (oxir < n - 1) natija.add(null);
+    natija.add(n);
+    return natija;
+  }
+
+  /// Pastdagi sahifalash paneli.
+  Widget _sahifaTugmalari() {
+
+    Widget tugma(String matn, VoidCallback? bosish, {bool faol = false}) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: Material(
+          color: faol ? _C.purple : _C.bgCard,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: bosish,
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 38),
+              height: 38,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                matn,
+                style: TextStyle(
+                  color: bosish == null && !faol
+                      ? _C.muted
+                      : Colors.white,
+                  fontWeight: faol ? FontWeight.w800 : FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final boshlanish = (_sahifa - 1) * 50 + 1;
+    final tugash = (boshlanish + _users.length - 1).clamp(0, _jami);
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: _C.bgBase,
+          border: Border(top: BorderSide(color: _C.faint)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final r in const [
+                    ['', 'Hammasi'],
+                    ['superAdmin', 'Super admin'],
+                    ['admin', 'Admin'],
+                    ['mudir', 'Mudir'],
+                    ['moliyachi', 'Moliyachi'],
+                    ['talaba', 'Talaba'],
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Material(
+                        color: _rolFiltri == r[0] ? _C.purple : _C.bgCard,
+                        borderRadius: BorderRadius.circular(20),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () {
+                            if (_rolFiltri == r[0]) return;
+                            setState(() {
+                              _rolFiltri = r[0];
+                              _sahifa = 1;
+                            });
+                            _loadUsers();
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            child: Text(
+                              r[1],
+                              style: TextStyle(
+                                color: _rolFiltri == r[0] ? Colors.white : _C.muted,
+                                fontSize: 12.5,
+                                fontWeight: _rolFiltri == r[0]
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Jami: $_jami ta  |  $boshlanish-$tugash korsatilmoqda",
+              style: TextStyle(color: _C.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  tugma('<', _sahifa > 1 ? () => _otish(_sahifa - 1) : null),
+                  for (final r in _raqamlar())
+                    r == null
+                        ? tugma('...', null)
+                        : tugma('$r', () => _otish(r), faol: r == _sahifa),
+                  tugma(
+                    '>',
+                    _sahifa < _oxirgiSahifa
+                        ? () => _otish(_sahifa + 1)
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _changeRole(String userId, String newRole) async {
@@ -794,9 +979,9 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
     );
   }
 
-  // рџ—‘пёЏ Foydalanuvchini xavfsiz o'chirish: agar u xonaga biriktirilgan
+  // СЂСџвЂ”вЂРїС‘РЏ Foydalanuvchini xavfsiz o'chirish: agar u xonaga biriktirilgan
   // bo'lsa, avval shu xonadan chiqarib olinadi (studentIds/currentOccupants
-  // yangilanadi), so'ng foydalanuvchi hujjati o'chiriladi вЂ” talabalar_list.dart
+  // yangilanadi), so'ng foydalanuvchi hujjati o'chiriladi РІР‚вЂќ talabalar_list.dart
   // dagi _deleteUser bilan bir xil xavfsiz naqsh (bitta atomik batch orqali).
   Future<void> _deleteUser(String userId, String fullName) async {
     setState(() => _isLoading = true);
@@ -909,6 +1094,7 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
           ),
         ),
       ),
+      bottomNavigationBar: _sahifaTugmalari(),
       floatingActionButton: Container(
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -1034,7 +1220,7 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
                             // Oddiy 'admin' rolidagi foydalanuvchi
                             // 'admin'/'superAdmin' rolidagi boshqa
                             // foydalanuvchining rolini umuman o'zgartira
-                            // olmaydi вЂ” bu huquq faqat superAdmin'da.
+                            // olmaydi РІР‚вЂќ bu huquq faqat superAdmin'da.
                             final bool isProtectedTarget =
                                 !widget.isSuperAdmin &&
                                     (currentRole == 'admin' ||
@@ -1042,7 +1228,7 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
                             final List<String> selectableRoles = [
                               // Faqat superAdmin boshqa foydalanuvchini
                               // 'admin' yoki 'superAdmin' qilib
-                              // o'zgartira oladi вЂ” oddiy admin bu
+                              // o'zgartira oladi РІР‚вЂќ oddiy admin bu
                               // huquqlarni ko'rmaydi.
                               if (widget.isSuperAdmin) 'superAdmin',
                               if (widget.isSuperAdmin) 'admin',
@@ -1084,7 +1270,7 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
                                       ? currentRole
                                       : 'talaba',
                                   // isProtectedTarget bo'lsa, dropdown
-                                  // faol bo'lsa-da tanlash imkonsiz вЂ”
+                                  // faol bo'lsa-da tanlash imkonsiz РІР‚вЂќ
                                   // faqat bitta variant (joriy rol) beriladi.
                                   items: (isProtectedTarget
                                           ? {currentRole}
@@ -1121,7 +1307,7 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
                               ),
                             );
                           }),
-                          // рџ—‘пёЏ O'chirish tugmasi: faqat huquqi bo'lsa
+                          // СЂСџвЂ”вЂРїС‘РЏ O'chirish tugmasi: faqat huquqi bo'lsa
                           // ko'rinadi. O'zini-o'zi va (cheklangan admin
                           // bo'lsa) himoyalangan admin/superAdmin
                           // nishonlarni o'chira olmaydi.
@@ -1218,7 +1404,7 @@ class __AdminSettingsTabState extends State<_AdminSettingsTab> {
   bool get _canExportExcel =>
       _isSuperAdmin || widget.user.hasPermission('canExportExcel');
 
-  // 4пёЏвѓЈ O'g'il bolalar yotoqxonasidagi TALABALARNI to'liq shaxsiy
+  // 4РїС‘РЏРІС“Р€ O'g'il bolalar yotoqxonasidagi TALABALARNI to'liq shaxsiy
   // ma'lumotlari (ro'yxatdan o'tgan vaqti, o'zi/Admin qo'shganligi va
   // ro'yxatdan o'tishda kiritilgan barcha ma'lumotlari bilan) Excel
   // formatida yuklab olish (Export to Excel) integratsiyasi.
@@ -1322,7 +1508,7 @@ class __AdminSettingsTabState extends State<_AdminSettingsTab> {
                                 _StepRow(
                                   number: "1",
                                   text:
-                                      "Yangi talaba ro'yxatdan o'tadi вЂ” tizim uni \"Biriktirilmagan\" holatda saqlaydi",
+                                      "Yangi talaba ro'yxatdan o'tadi РІР‚вЂќ tizim uni \"Biriktirilmagan\" holatda saqlaydi",
                                 ),
                                 SizedBox(height: 8),
                                 _StepRow(
@@ -1340,7 +1526,7 @@ class __AdminSettingsTabState extends State<_AdminSettingsTab> {
                                 _StepRow(
                                   number: "4",
                                   text:
-                                      "Talabaga bildirishnoma yuboriladi вЂ” xona raqami va qavatini xabar qiladi",
+                                      "Talabaga bildirishnoma yuboriladi РІР‚вЂќ xona raqami va qavatini xabar qiladi",
                                 ),
                               ],
                             ),
@@ -1363,11 +1549,11 @@ class __AdminSettingsTabState extends State<_AdminSettingsTab> {
                         ],
                       ),
                     ),
-                    // рџ”’ "Ma'lumotlar bazasi" bo'limi: Excel eksport
+                    // СЂСџвЂќвЂ™ "Ma'lumotlar bazasi" bo'limi: Excel eksport
                     // tugmasi endi haqiqatda 'canExportExcel' huquqiga
                     // qarab ko'rinadi (superAdmin doim ko'radi, cheklangan
                     // admin esa faqat shu huquq berilgan bo'lsagina).
-                    // "Barcha ma'lumotlarni tozalash" вЂ” bu qaytarib
+                    // "Barcha ma'lumotlarni tozalash" РІР‚вЂќ bu qaytarib
                     // bo'lmaydigan halokatli amal, shuning uchun u FAQAT
                     // superAdmin uchun qoladi, hech qanday granular huquq
                     // bilan berilmaydi.
@@ -1451,7 +1637,7 @@ class __AdminSettingsTabState extends State<_AdminSettingsTab> {
                           ],
                         ),
                       ),
-                    ], // if (_isSuperAdmin || _canExportExcel) вЂ” Ma'lumotlar bazasi bo'limi
+                    ], // if (_isSuperAdmin || _canExportExcel) РІР‚вЂќ Ma'lumotlar bazasi bo'limi
                     const SizedBox(height: 14),
                     _SettingsCard(
                       icon: Icons.info_outline_rounded,
@@ -1572,7 +1758,7 @@ class __AdminSettingsTabState extends State<_AdminSettingsTab> {
               Navigator.pop(dialogContext);
               setState(() => _isLoading = true);
 
-              // в›” BU AMAL VAQTINCHA O'CHIRIB QO'YILGAN.
+              // РІвЂєвЂќ BU AMAL VAQTINCHA O'CHIRIB QO'YILGAN.
               //
               // Ilgari bu tugma Firestore'dagi BARCHA kolleksiyalarni
               // (foydalanuvchilar, xonalar, murojaatlar, tolovlar,
@@ -1611,7 +1797,7 @@ class __AdminSettingsTabState extends State<_AdminSettingsTab> {
   }
 }
 
-// в”Ђв”Ђв”Ђ Settings UI yordamchilari в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ Settings UI yordamchilari РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 class _GlowOrb extends StatelessWidget {
   final Color color;
   final double size;

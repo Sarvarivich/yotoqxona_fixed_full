@@ -258,11 +258,11 @@ class _MudirArizalarScreenState extends State<MudirArizalarScreen> {
                                   : 1;
                           const gap = 14.0;
 
-                          // Fixed balandlik ishlatilmaydi. Har bir karta oРІР‚Вz
+                          // Fixed balandlik ishlatilmaydi. Har bir karta o’z
                           // kontentining tabiiy balandligini oladi. Shu sababli
-                          // oynani istalgan oРІР‚Вlchamga oРІР‚Вzgartirganda ham
+                          // oynani istalgan o’lchamga o’zgartirganda ham
                           // BOTTOM/RIGHT OVERFLOW yuz bermaydi va desktopda
-                          // karta ostida ortiqcha boРІР‚Вsh joy qolmaydi.
+                          // karta ostida ortiqcha bo’sh joy qolmaydi.
                           return SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.only(bottom: 24),
@@ -497,7 +497,7 @@ class _ApplicantCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = (data['fullName'] ?? 'NomaРљСlum talaba').toString();
+    final name = (data['fullName'] ?? 'Noma’lum talaba').toString();
     final social = data['hasSocialBenefit'] == true;
     final assigned = (data['roomId'] ?? '').toString().isNotEmpty ||
         (data['hostelAssignmentType'] ?? '').toString().isNotEmpty;
@@ -579,14 +579,14 @@ class _ApplicantCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 _Meta(Icons.phone_outlined,
-                    (data['phoneNumber'] ?? 'РІР‚вЂќ').toString()),
+                    (data['phoneNumber'] ?? '—').toString()),
                 _Meta(
-                    Icons.badge_outlined, (data['jshshir'] ?? 'РІР‚вЂќ').toString()),
+                    Icons.badge_outlined, (data['jshshir'] ?? '—').toString()),
                 _Meta(
                   Icons.school_outlined,
-                  "${data['faculty'] ?? 'Fakultet'} / ${data['course'] ?? 'РІР‚вЂќ'}-kurs",
+                  "${data['faculty'] ?? 'Fakultet'} / ${data['course'] ?? '—'}-kurs",
                 ),
-                _Meta(Icons.map_outlined, (data['region'] ?? 'РІР‚вЂќ').toString()),
+                _Meta(Icons.map_outlined, (data['region'] ?? '—').toString()),
               ],
             ),
             const SizedBox(height: 9),
@@ -605,7 +605,7 @@ class _ApplicantCard extends StatelessWidget {
                     assigned
                         ? ((data['hostelAssignmentType'] ?? '').toString() ==
                                 'rental'
-                            ? 'Ijara boРІР‚Вyicha ajratilgan'
+                            ? 'Ijara bo’yicha ajratilgan'
                             : 'Yotoqxonaga biriktirilgan')
                         : 'Biriktirilmagan',
                     style: TextStyle(
@@ -619,7 +619,7 @@ class _ApplicantCard extends StatelessWidget {
                   onPressed: onAssign,
                   icon:
                       const Icon(Icons.assignment_turned_in_outlined, size: 16),
-                  label: Text(assigned ? 'KoРІР‚Вrish' : 'Biriktirish'),
+                  label: Text(assigned ? 'Ko’rish' : 'Biriktirish'),
                 ),
               ],
             ),
@@ -654,7 +654,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
 
   static const types = [
     ('university', 'Universitet yotoqxonasi', Icons.account_balance_rounded),
-    ('avto_yol', 'Avto yoРІР‚Вl yotoqxonasi', Icons.directions_car_rounded),
+    ('avto_yol', 'Avto yo’l yotoqxonasi', Icons.directions_car_rounded),
     ('medical', 'Med kollej yotoqxonasi', Icons.local_hospital_rounded),
     (
       'navoi_object',
@@ -772,9 +772,9 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
   }
 
   String _roomStatusText(int occupants, int capacity) {
-    if (capacity <= 0) return 'SigРІР‚Вim belgilanmagan';
-    if (occupants >= capacity) return 'ToРІР‚Вliq band';
-    if (occupants <= 0) return 'BoРІР‚Вsh';
+    if (capacity <= 0) return 'Sig’im belgilanmagan';
+    if (occupants >= capacity) return 'To’liq band';
+    if (occupants <= 0) return 'Bo’sh';
     return 'Qisman band';
   }
 
@@ -859,7 +859,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
     if (!mounted) return;
 
     final name =
-        (data['fullName'] ?? data['name'] ?? 'NomaРІР‚в„ўlum talaba').toString();
+        (data['fullName'] ?? data['name'] ?? 'Noma’lum talaba').toString();
     final phone = (data['phoneNumber'] ?? data['phone'] ?? '-').toString();
     final studentId = (data['studentId'] ?? data['jshshir'] ?? '-').toString();
     final faculty = (data['faculty'] ?? '-').toString();
@@ -891,7 +891,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
               _detailRow(Icons.menu_book_outlined, 'Kurs', course),
               _detailRow(Icons.map_outlined, 'Viloyat', region),
               if (message.trim().isNotEmpty)
-                _detailRow(Icons.info_outline, 'MaРІР‚в„ўlumot', message),
+                _detailRow(Icons.info_outline, 'Ma’lumot', message),
               _detailRow(
                   Icons.home_work_outlined, 'Turi', 'Ijara uchun ajratilgan'),
             ],
@@ -1008,7 +1008,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Talabaga ijara boРІР‚Вyicha yotoqxona ajratildi.'),
+          content: Text('Talabaga ijara bo’yicha yotoqxona ajratildi.'),
           backgroundColor: Colors.green,
         ),
       );
@@ -1027,7 +1027,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
     final values = await showDialog<List<int>>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Yangi xona qoРІР‚Вshish'),
+        title: const Text('Yangi xona qo’shish'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1039,12 +1039,12 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
             TextField(
               controller: capacityCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'SigРІР‚Вimi'),
+              decoration: const InputDecoration(labelText: 'Sig’imi'),
             ),
             TextField(
               controller: priceCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Oylik toРІР‚Вlov'),
+              decoration: const InputDecoration(labelText: 'Oylik to’lov'),
             ),
           ],
         ),
@@ -1061,7 +1061,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                 Navigator.pop(ctx, [n, c, p]);
               }
             },
-            child: const Text('QoРІР‚Вshish'),
+            child: const Text('Qo’shish'),
           ),
         ],
       ),
@@ -1123,7 +1123,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content:
-                Text('РІвЂћвЂ“${values[0]} xona yaratildi va talaba biriktirildi.')),
+                Text('№${values[0]} xona yaratildi va talaba biriktirildi.')),
       );
     } catch (e) {
       if (mounted) setState(() => _error = 'Xona yaratishda xatolik: $e');
@@ -1171,7 +1171,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                 fontSize: 17, fontWeight: FontWeight.w800)),
                         Text(
                           assigned
-                              ? 'Biriktirishni koРІР‚Вrish/oРІР‚Вzgartirish'
+                              ? 'Biriktirishni ko’rish/o’zgartirish'
                               : 'Yotoqxona turini tanlang',
                           style: const TextStyle(color: _C.muted, fontSize: 12),
                         ),
@@ -1253,7 +1253,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                     size: 42, color: _C.muted),
                                 SizedBox(height: 10),
                                 Text(
-                                  'Ijara uchun biriktirilgan talabalar yoРІР‚Вq',
+                                  'Ijara uchun biriktirilgan talabalar yo’q',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: _C.ink,
@@ -1262,7 +1262,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                 ),
                                 SizedBox(height: 5),
                                 Text(
-                                  'Ijara varianti tanlangan talabalar shu yerda koРІР‚Вrinadi.',
+                                  'Ijara varianti tanlangan talabalar shu yerda ko’rinadi.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: _C.muted,
@@ -1282,17 +1282,17 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                         itemBuilder: (context, index) {
                           final d = students[index];
                           final name =
-                              (d['fullName'] ?? d['name'] ?? 'NomaРІР‚в„ўlum talaba')
+                              (d['fullName'] ?? d['name'] ?? 'Noma’lum talaba')
                                   .toString();
                           final phone = (d['phoneNumber'] ??
                                   d['phone'] ??
-                                  'Telefon koРІР‚Вrsatilmagan')
+                                  'Telefon ko’rsatilmagan')
                               .toString();
                           final faculty =
-                              (d['faculty'] ?? 'Fakultet koРІР‚Вrsatilmagan')
+                              (d['faculty'] ?? 'Fakultet ko’rsatilmagan')
                                   .toString();
                           final region =
-                              (d['region'] ?? 'Viloyat koРІР‚Вrsatilmagan')
+                              (d['region'] ?? 'Viloyat ko’rsatilmagan')
                                   .toString();
                           final social = (d['socialStatus'] ??
                                   d['socialCategory'] ??
@@ -1353,7 +1353,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          '$faculty РІР‚Сћ $region',
+                                          '$faculty • $region',
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
@@ -1455,7 +1455,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                'РІвЂћвЂ“$roomNo-xona',
+                                                '№$roomNo-xona',
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.w800,
                                                   color: _C.ink,
@@ -1463,7 +1463,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                               ),
                                               const SizedBox(height: 3),
                                               Text(
-                                                '$occ/$cap kishi РІР‚Сћ $status',
+                                                '$occ/$cap kishi • $status',
                                                 style: TextStyle(
                                                   color: full
                                                       ? _C.coral
@@ -1475,7 +1475,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                                 ),
                                               ),
                                               Text(
-                                                'Xonani bosib yashovchi talabalarni koРІР‚Вring',
+                                                'Xonani bosib yashovchi talabalarni ko’ring',
                                                 style: const TextStyle(
                                                   color: _C.muted,
                                                   fontSize: 11,
@@ -1488,7 +1488,7 @@ class _AssignmentDialogState extends State<_AssignmentDialog> {
                                           const Padding(
                                             padding: EdgeInsets.only(right: 4),
                                             child: Text(
-                                              'ToРІР‚Вliq',
+                                              'To’liq',
                                               style: TextStyle(
                                                 color: _C.coral,
                                                 fontWeight: FontWeight.w800,
@@ -1566,12 +1566,12 @@ class _EmptyRooms extends StatelessWidget {
                   size: 40, color: _C.muted),
               const SizedBox(height: 10),
               const Text(
-                'BoРІР‚Вsh xona topilmadi',
+                'Bo’sh xona topilmadi',
                 style: TextStyle(fontWeight: FontWeight.w800, color: _C.ink),
               ),
               const SizedBox(height: 5),
               const Text(
-                'Barcha xonalar toРІР‚Вla. Yangi xona qoРІР‚Вshib, talabani shu xonaga biriktirishingiz mumkin.',
+                'Barcha xonalar to’la. Yangi xona qo’shib, talabani shu xonaga biriktirishingiz mumkin.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: _C.muted, fontSize: 12.5),
               ),
@@ -1579,7 +1579,7 @@ class _EmptyRooms extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onCreate,
                 icon: const Icon(Icons.add_home_work_rounded),
-                label: const Text('Yangi xona qoРІР‚Вshish'),
+                label: const Text('Yangi xona qo’shish'),
               ),
             ],
           ),
