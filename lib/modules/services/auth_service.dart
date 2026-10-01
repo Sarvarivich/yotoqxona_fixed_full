@@ -11,8 +11,8 @@ import 'package:yotoqxona/modules/models/user_model.dart';
 import 'supabase_storage_service.dart';
 import 'api_service.dart';
 
-// ─── AuthService: endi TO'LIQ Firebase Authentication'ga asoslangan ───
-// ✅ Parollar endi Firestore'da ochiq matn (plain text) holida
+// РІвЂќР‚РІвЂќР‚РІвЂќР‚ AuthService: endi TO'LIQ Firebase Authentication'ga asoslangan РІвЂќР‚РІвЂќР‚РІвЂќР‚
+// РІСљвЂ¦ Parollar endi Firestore'da ochiq matn (plain text) holida
 //    SAQLANMAYDI. Ularni Firebase Authentication o'zi xavfsiz
 //    boshqaradi (hash'langan holda). Firestore'dagi `users/{uid}`
 //    hujjati faqat profil ma'lumotlarini (ism, rol, telefon va h.k.)
@@ -35,7 +35,7 @@ class AuthService {
       case 'email-already-in-use':
         return "Bu email band!";
       case 'weak-password':
-        return "Parol juda oddiy — kamida 6 ta belgi bo'lishi kerak";
+        return "Parol juda oddiy РІР‚вЂќ kamida 6 ta belgi bo'lishi kerak";
       case 'network-request-failed':
         return "Internet aloqasi yo'q, qaytadan urinib ko'ring";
       default:
@@ -48,7 +48,7 @@ class AuthService {
     if (e is StorageException) {
       final msg = e.message.toLowerCase();
       if (msg.contains('bucket not found')) {
-        return "hujjatlar uchun bucket topilmadi — administratorga xabar bering";
+        return "hujjatlar uchun bucket topilmadi РІР‚вЂќ administratorga xabar bering";
       }
       if (msg.contains('row-level security') ||
           msg.contains('policy') ||
@@ -79,13 +79,13 @@ class AuthService {
   /// Talabaning o'zi ro'yxatdan o'tishi.
   ///
   /// Endi to'liq Laravel API orqali: POST /api/register.
-  /// Backend bir so'rovda hammasini bajaradi — foydalanuvchi
+  /// Backend bir so'rovda hammasini bajaradi РІР‚вЂќ foydalanuvchi
   /// yaratish, ijtimoiy imtiyoz hujjatlarini saqlash, ariza ochish
   /// (2-bosqich, "ko'rib chiqilmoqda") va Sanctum tokeni berish.
   ///
   /// Ilgari bu metod Firebase Auth'da hisob ochib, hujjatlarni
   /// Supabase'ga yuklab, profilni Firestore'ga yozardi. Uch qadam,
-  /// uchtasi ham alohida buzilishi mumkin edi — va Firebase
+  /// uchtasi ham alohida buzilishi mumkin edi РІР‚вЂќ va Firebase
   /// sozlanmagan platformalarda (masalan Windows) umuman ishlamasdi.
   static Future<void> registerAndLoginUser({
     required BuildContext context,
@@ -184,7 +184,7 @@ class AuthService {
         throw Exception(_registerXato(tana));
       }
 
-      // Token darhol saqlanadi — talaba qayta login qilmasdan
+      // Token darhol saqlanadi РІР‚вЂќ talaba qayta login qilmasdan
       // tizimga kiradi.
       final token = tana['token']?.toString();
       if (token != null && token.isNotEmpty) {
@@ -241,13 +241,13 @@ class AuthService {
   }
   // 2. ADMIN/MUDIR ICHKARIDAN YANGI FOYDALANUVCHI QO'SHISHI
   //
-  // ✅ Endi Laravel API orqali ishlaydi (POST /api/students).
+  // РІСљвЂ¦ Endi Laravel API orqali ishlaydi (POST /api/students).
   //
   // Ilgari bu metod ikkinchi (vaqtinchalik) Firebase ilova nusxasini
   // ochib, Firebase Auth'da hisob yaratardi va profilni Firestore'ga
   // yozardi. Bu murakkab edi va uch muammosi bor edi:
   //   1. Firestore yozish muvaffaqiyatsiz tugasa "orphan" Auth hisobi
-  //      qolib ketardi — hisob bor, profil yo'q.
+  //      qolib ketardi РІР‚вЂќ hisob bor, profil yo'q.
   //   2. Windows va boshqa Firebase sozlanmagan platformalarda
   //      umuman ishlamas edi.
   //   3. Ma'lumot Laravel bazasiga tushmasdi.
@@ -279,7 +279,7 @@ class AuthService {
           'phone': phoneNumber.trim(),
         if (faculty != null && faculty.isNotEmpty) 'faculty': faculty,
         // Backend 'course' ni butun son sifatida kutadi, ekran esa
-        // matn ("1-kurs" yoki "1") berishi mumkin — raqamini ajratamiz.
+        // matn ("1-kurs" yoki "1") berishi mumkin РІР‚вЂќ raqamini ajratamiz.
         if (course != null && course.isNotEmpty)
           'course': int.tryParse(course.replaceAll(RegExp(r'[^0-9]'), '')),
         // Admin/superAdmin uchun huquqlar ro'yxati additional_data
@@ -287,7 +287,7 @@ class AuthService {
         if (extraData != null) 'additional_data': extraData,
       };
 
-      // null qiymatlarni yubormaymiz — validatsiya ularni rad etishi
+      // null qiymatlarni yubormaymiz РІР‚вЂќ validatsiya ularni rad etishi
       // mumkin (masalan course ajratib bo'lmasa).
       body.removeWhere((key, value) => value == null);
 
@@ -331,25 +331,65 @@ class AuthService {
 
   // Laravel API xatosini o'zbekcha tushunarli xabarga o'giradi.
   static String _friendlyApiError(ApiException e) {
-    final matn = e.message.toLowerCase();
+    // Backend 422 da aniq sababni `errors` ichida qaytaradi:
+    //   {"message": "Ma'lumotlar xato kiritildi.",
+    //    "errors": {"email": ["The email has already been taken."]}}
+    //
+    // Ilgari faqat `message` o'qilardi - u har doim bir xil, shuning
+    // uchun aniq sabab yo'qolib, foydalanuvchi nima xato ekanini
+    // bilmasdi.
+    final xatolar = e.data?['errors'];
+    if (xatolar is Map && xatolar.isNotEmpty) {
+      final qatorlar = <String>[];
+      xatolar.forEach((maydon, xabarlar) {
+        final birinchi = (xabarlar is List && xabarlar.isNotEmpty)
+            ? xabarlar.first.toString()
+            : xabarlar.toString();
+        qatorlar.add(_maydonXatosi(maydon.toString(), birinchi));
+      });
+      return qatorlar.join('\n');
+    }
 
-    if (matn.contains('email') && matn.contains('taken')) {
-      return "Bu email allaqachon ro'yxatdan o'tgan.";
-    }
-    if (matn.contains('jshshir')) {
-      return "Bu JSHSHIR allaqachon boshqa foydalanuvchiga biriktirilgan.";
-    }
-    if (matn.contains('passport')) {
-      return "Bu pasport raqami allaqachon ro'yxatdan o'tgan.";
-    }
-    if (matn.contains('password') && matn.contains('8')) {
-      return "Parol kamida 8 ta belgidan iborat bo'lishi kerak.";
-    }
-    if (matn.contains('ruxsat') || matn.contains('403')) {
+    final matn = e.message.toLowerCase();
+    if (matn.contains('ruxsat') || e.statusCode == 403) {
       return "Bu amalni bajarish uchun sizda ruxsat yo'q.";
     }
-
     return e.message;
+  }
+
+  /// Bitta maydon xatosini tushunarli matnga o'giradi.
+  static String _maydonXatosi(String maydon, String xabar) {
+    final x = xabar.toLowerCase();
+    switch (maydon) {
+      case 'email':
+        if (x.contains('taken')) return "Bu email allaqachon ro'yxatdan o'tgan.";
+        if (x.contains('valid')) return "Email noto'g'ri formatda.";
+        return "Email: $xabar";
+      case 'password':
+        if (x.contains('confirm')) return "Parollar mos kelmadi.";
+        if (x.contains('8')) return "Parol kamida 8 ta belgidan iborat bo'lishi kerak.";
+        return "Parol: $xabar";
+      case 'passport_id':
+        return x.contains('taken')
+            ? "Bu pasport raqami allaqachon ro'yxatdan o'tgan."
+            : "Pasport: $xabar";
+      case 'jshshir':
+        return x.contains('taken')
+            ? "Bu JSHSHIR allaqachon boshqa foydalanuvchiga biriktirilgan."
+            : "JSHSHIR: $xabar";
+      case 'phone':
+        return "Telefon raqami noto'g'ri: $xabar";
+      case 'full_name':
+        return "F.I.Sh.: $xabar";
+      case 'role':
+        return "Rol noto'g'ri tanlangan: $xabar";
+      case 'hostel':
+        return "Yotoqxona noto'g'ri tanlangan: $xabar";
+      case 'course':
+        return "Kurs noto'g'ri: $xabar";
+      default:
+        return "$maydon: $xabar";
+    }
   }
 
   static Future<void> logout() async {
@@ -362,7 +402,7 @@ class AuthService {
   }
 
   // 3. TIZIMGA KIRISH (LOGIN)
-  // ✅ Birinchi navbatda Laravel REST API (Sanctum) orqali tekshiradi,
+  // РІСљвЂ¦ Birinchi navbatda Laravel REST API (Sanctum) orqali tekshiradi,
   // kerak bo'lsa Firebase Auth zaxira sifatida ishlaydi.
   static Future<UserModel?> loginUser({
     required BuildContext context,
@@ -422,18 +462,37 @@ class AuthService {
         return user;
       }
     } on ApiException catch (e) {
-      debugPrint('ℹ️ Laravel login javobi: ${e.message}');
+      debugPrint('РІвЂћв„–РїС‘РЏ Laravel login javobi: ${e.message}');
+      // Firebase zaxirasi OLIB TASHLANDI. Ilgari ro'yxatdan o'tish
+      // faqat Firebase'ga yozgani uchun Laravel rad etsa Firebase'da
+      // ham tekshirilardi. Endi ro'yxatdan o'tish ham Laravel'da, shuning
+      // uchun Laravel javobi - yakuniy javob. Zaxira faqat asl xabarni
+      // "[core/no-app]" bilan yashirardi.
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text(
+              (e.statusCode == 401 || e.statusCode == 422)
+                  ? "Email yoki parol noto'g'ri."
+                  : e.message,
+            ),
+          ),
+        );
+      }
+      return null;
       // FIX: avval bu yerda 401/403/422 kelganda darhol xato ko'rsatib
       // to'xtar edik. Lekin ilovada ro'yxatdan o'tish (registerAndLoginUser)
-      // FAQAT Firebase'ga yozadi, Laravel'ga umuman yozmaydi — shuning
+      // FAQAT Firebase'ga yozadi, Laravel'ga umuman yozmaydi РІР‚вЂќ shuning
       // uchun o'zi ro'yxatdan o'tgan har bir talaba uchun Laravel doim
       // "topilmadi" (401/422) deb javob berardi va login shu yerda
       // muvaffaqiyatsiz to'xtab qolardi, pastdagi Firebase Auth
       // tekshiruviga hech qachon yetib bormas edi. Endi bu holatda ham
-      // kod pastga — Firebase Auth zaxira tekshiruviga — o'tadi.
+      // kod pastga РІР‚вЂќ Firebase Auth zaxira tekshiruviga РІР‚вЂќ o'tadi.
     } catch (e) {
       debugPrint(
-          'ℹ️ Laravel API ulanishida xatolik: $e. Firebase Auth orqali tekshirilmoqda...');
+          'РІвЂћв„–РїС‘РЏ Laravel API ulanishida xatolik: $e. Firebase Auth orqali tekshirilmoqda...');
     }
 
     // 2. Firebase Auth zaxira tekshiruvi (agar Laravel API serveri vaqtinchalik uzoqda bo'lsa)
@@ -503,7 +562,7 @@ class AuthService {
     }
   }
 
-  // ✅ ADMIN tomonidan boshqa foydalanuvchining parolini yangilash.
+  // РІСљвЂ¦ ADMIN tomonidan boshqa foydalanuvchining parolini yangilash.
   // Laravel API orqali amalga oshiriladi (PUT /api/students/{id}/password).
   static Future<void> adminResetPassword(String uid, String newPassword) async {
     try {
@@ -516,7 +575,7 @@ class AuthService {
     }
   }
 
-  // ✅ Foydalanuvchini tizimdan o'chirish.
+  // РІСљвЂ¦ Foydalanuvchini tizimdan o'chirish.
   // Laravel API orqali amalga oshiriladi (DELETE /api/students/{id}).
   static Future<void> deleteUserAccount(String uid) async {
     try {

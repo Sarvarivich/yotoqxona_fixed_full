@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/uzbekistan_region.dart';
+import '../models/user_model.dart' show kFaculties;
 import '../services/api_service.dart';
 
 // ─── Creative LIGHT palette (talabalar ro'yxati bilan bir xil til) ───
@@ -37,6 +38,8 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
   String _searchQuery = '';
   String _selectedRegion = 'Barchasi';
   String _selectedHostel = 'Barchasi'; // Barchasi | boys | girls
+  String _selectedFakultet = 'Barchasi';
+  String _selectedYonalish = 'Barchasi';
 
   // Ma'lumot Laravel API'dan bir marta yuklanadi va saqlanadi.
   //
@@ -198,6 +201,16 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
               if (_selectedRegion != 'Barchasi' && region != _selectedRegion) {
                 return false;
               }
+              final fakultet = (d['faculty'] ?? '').toString().trim();
+              if (_selectedFakultet != 'Barchasi' &&
+                  fakultet != _selectedFakultet) {
+                return false;
+              }
+              final yonalish = (d['group_name'] ?? '').toString().trim();
+              if (_selectedYonalish != 'Barchasi' &&
+                  yonalish != _selectedYonalish) {
+                return false;
+              }
               if (_searchQuery.isNotEmpty) {
                 final q = _searchQuery.toLowerCase();
                 final fullName = _ism(d).toLowerCase();
@@ -225,7 +238,7 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
             return Column(
               children: [
                 _buildHeader(allData.length, totalBoys, totalGirls),
-                _buildFilters(),
+                _buildFilters(allData),
                 Expanded(
                   child: filtered.isEmpty
                       ? _buildEmptyState()
@@ -340,7 +353,28 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
     );
   }
 
-  Widget _buildFilters() {
+  /// Yo'nalishlar ro'yxati: bazadagi haqiqiy qiymatlardan.
+  ///
+  /// Fakultet tanlangan bo'lsa - faqat o'sha fakultetning
+  /// yo'nalishlari ko'rsatiladi.
+  List<String> _yonalishlar(List<Map<String, dynamic>> allData) {
+    final toplam = <String>{};
+    for (final d in allData) {
+      final f = (d['faculty'] ?? '').toString().trim();
+      if (_selectedFakultet != 'Barchasi' && f != _selectedFakultet) continue;
+      final y = (d['group_name'] ?? '').toString().trim();
+      if (y.isNotEmpty) toplam.add(y);
+    }
+    final natija = toplam.toList()..sort();
+    return natija;
+  }
+
+  Widget _buildFilters(List<Map<String, dynamic>> allData) {
+    final yonalishlar = _yonalishlar(allData);
+    // Tanlangan yo'nalish yangi ro'yxatda bo'lmasa - "Barchasi".
+    final yonalishQiymati = yonalishlar.contains(_selectedYonalish)
+        ? _selectedYonalish
+        : 'Barchasi';
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
       child: LayoutBuilder(
@@ -395,13 +429,35 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
                         : 'Barchasi',
                 onChanged: (v) => setState(() => _selectedHostel = v!),
               ),
+              _tanlovFiltr(
+                icon: Icons.account_balance_rounded,
+                value: _selectedFakultet,
+                items: ['Barchasi', ...kFaculties],
+                birinchi: 'Barcha fakultetlar',
+                onChanged: (v) => setState(() {
+                  _selectedFakultet = v!;
+                  // Fakultet o'zgarsa yo'nalish qaytadan tanlanadi.
+                  _selectedYonalish = 'Barchasi';
+                }),
+              ),
+              _tanlovFiltr(
+                icon: Icons.school_rounded,
+                value: yonalishQiymati,
+                items: ['Barchasi', ...yonalishlar],
+                birinchi: "Barcha yo'nalishlar",
+                onChanged: (v) => setState(() => _selectedYonalish = v!),
+              ),
               if (_selectedRegion != 'Barchasi' ||
                   _selectedHostel != 'Barchasi' ||
+                  _selectedFakultet != 'Barchasi' ||
+                  _selectedYonalish != 'Barchasi' ||
                   _searchQuery.isNotEmpty)
                 TextButton.icon(
                   onPressed: () => setState(() {
                     _selectedRegion = 'Barchasi';
                     _selectedHostel = 'Barchasi';
+                    _selectedFakultet = 'Barchasi';
+                    _selectedYonalish = 'Barchasi';
                     _searchQuery = '';
                     _searchController.clear();
                   }),
@@ -412,6 +468,57 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Uzun qiymatli tanlov (fakultet, yo'nalish).
+  ///
+  /// Kengligi cheklangan - uzun yo'nalish nomlari qatorni buzmaydi,
+  /// oxiri "..." bilan qisqaradi.
+  Widget _tanlovFiltr({
+    required IconData icon,
+    required String value,
+    required List<String> items,
+    required String birinchi,
+    required void Function(String?) onChanged,
+  }) {
+    return Container(
+      width: 260,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _C.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: value == 'Barchasi' ? _C.faint : _C.purple,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: _C.muted),
+          style: const TextStyle(
+              color: _C.ink, fontSize: 13, fontWeight: FontWeight.w600),
+          items: items
+              .map((e) => DropdownMenuItem(
+                    value: e,
+                    child: Row(
+                      children: [
+                        Icon(icon, size: 16, color: _C.purple),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            e == 'Barchasi' ? birinchi : e,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ))
+              .toList(),
+          onChanged: onChanged,
+        ),
       ),
     );
   }
@@ -458,7 +565,9 @@ class _UmumiyRoyxatSahifasiState extends State<UmumiyRoyxatSahifasi> {
   Widget _buildEmptyState() {
     final message = _searchQuery.isNotEmpty ||
             _selectedRegion != 'Barchasi' ||
-            _selectedHostel != 'Barchasi'
+            _selectedHostel != 'Barchasi' ||
+            _selectedFakultet != 'Barchasi' ||
+            _selectedYonalish != 'Barchasi'
         ? "Ushbu filtr bo'yicha talaba topilmadi"
         : "Hozircha talabalar yo'q";
     return Center(

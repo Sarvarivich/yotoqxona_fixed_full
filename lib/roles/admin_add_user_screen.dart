@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../modules/models/user_model.dart';
 import '../modules/services/auth_service.dart';
+import '../modules/services/api_service.dart';
+import 'package:http/http.dart' as http;
 
 // ─── Creative dark palette (talaba/admin dizayni bilan bir xil til) ───
 class _C {
@@ -61,6 +64,7 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen>
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
   final _nameController = TextEditingController();
 
   String _selectedRole = 'talaba';
@@ -70,6 +74,7 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen>
   String? _selectedCourse;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirm = true;
 
   late final AnimationController _animCtrl;
   late final Animation<double> _fade;
@@ -157,6 +162,7 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen>
     _animCtrl.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmController.dispose();
     _nameController.dispose();
     super.dispose();
   }
@@ -209,12 +215,126 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen>
       // 🎉 Muvaffaqiyatli yaratilgach — rol kartasi bilan bir xil uslubdagi
       // izoh (banner) bir necha soniya ko'rsatiladi, so'ng ekran yopiladi.
       if (success && mounted) {
+        // Yaratilgan login-parol bilan darhol kirib ko'ramiz.
+        // SuperAdmin seansi buzilmasligi uchun token saqlanmaydi.
+        final email = _emailController.text.trim().toLowerCase();
+        final parol = _passwordController.text.trim();
+        final kirdi = await _kirishniTekshir(email, parol);
+
+        if (!mounted) return;
+        await _natijaOynasi(email, parol, kirdi);
+        if (!mounted) return;
         await _showSuccessBanner(_currentRole);
         if (mounted) Navigator.pop(context);
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  /// Email: to'g'ri format va universitet domeni.
+  ///
+  /// Faqat @kuhostel.uz (xodimlar) va @ku.uz (talabalar) qabul
+  /// qilinadi. Bu "kuhosel" kabi yozuv xatolarini yaratish paytidayoq
+  /// ushlaydi - aks holda foydalanuvchi keyin kira olmay qolardi.
+  String? _emailTekshir(String? v) {
+    final e = (v ?? '').trim().toLowerCase();
+    if (e.isEmpty) return 'Emailni kiriting';
+    if (!RegExp(r'^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$').hasMatch(e)) {
+      return "Email noto'g'ri formatda";
+    }
+    if (!e.endsWith('@kuhostel.uz') && !e.endsWith('@ku.uz')) {
+      return "Email @kuhostel.uz yoki @ku.uz bilan tugashi kerak";
+    }
+    return null;
+  }
+
+  /// Yaratilgan foydalanuvchi bilan kirishni sinaydi.
+  ///
+  /// To'g'ridan-to'g'ri so'rov yuboriladi va javobdagi token SAQLANMAYDI -
+  /// aks holda superAdmin seansi yangi foydalanuvchiga almashib qolardi.
+  Future<bool> _kirishniTekshir(String email, String parol) async {
+    try {
+      final javob = await http
+          .post(
+            Uri.parse('${ApiService.baseUrl}/login'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({'email': email, 'password': parol}),
+          )
+          .timeout(const Duration(seconds: 20));
+      return javob.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Yaratish natijasi: login, parol va kirish sinovi holati.
+  Future<void> _natijaOynasi(String email, String parol, bool kirdi) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1730),
+        title: Row(
+          children: [
+            Icon(
+              kirdi ? Icons.verified_rounded : Icons.warning_amber_rounded,
+              color: kirdi ? Colors.greenAccent : Colors.orangeAccent,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                kirdi
+                    ? 'Yaratildi va kirish tekshirildi'
+                    : 'Yaratildi, lekin kirish tekshiruvi o\'tmadi',
+                style: const TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Login:', style: TextStyle(color: Colors.white54)),
+            SelectableText(email,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            const Text('Parol:', style: TextStyle(color: Colors.white54)),
+            SelectableText(parol,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
+            if (!kirdi) ...[
+              const SizedBox(height: 14),
+              const Text(
+                "Server bilan bog'lanishni tekshiring yoki Rol "
+                "boshqaruvidan parolni qayta o'rnating.",
+                style: TextStyle(color: Colors.orangeAccent, fontSize: 12.5),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(
+                  ClipboardData(text: 'Login: $email\nParol: $parol'));
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('Nusxa olindi')),
+              );
+            },
+            child: const Text('Nusxa olish'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Yopish'),
+          ),
+        ],
+      ),
+    );
   }
 
   // ─── "Super Admin" kartasi uslubidagi muvaffaqiyat izohi ───────
@@ -308,17 +428,15 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen>
                                             icon: Icons.alternate_email_rounded,
                                             keyboardType:
                                                 TextInputType.emailAddress,
-                                            validator: (v) =>
-                                                v == null || v.isEmpty
-                                                    ? "Emailni kiriting"
-                                                    : (!v.contains('@')
-                                                        ? "Email noto'g'ri"
-                                                        : null),
+                                            // Email domeni qat'iy tekshiriladi:
+                                            // "kuhosel" kabi yozuv xatolari
+                                            // yaratish paytidayoq ushlanadi.
+                                            validator: _emailTekshir,
                                           ),
                                           const _FieldDivider(),
                                           _DarkField(
                                             controller: _passwordController,
-                                            label: 'Parol (kamida 6 ta belgi)',
+                                            label: 'Parol (kamida 8 ta belgi)',
                                             icon: Icons.lock_outline_rounded,
                                             obscure: _obscurePassword,
                                             suffix: IconButton(
@@ -334,9 +452,38 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen>
                                                   _obscurePassword =
                                                       !_obscurePassword),
                                             ),
+                                            // Backend kamida 8 belgi talab
+                                            // qiladi. Ilgari forma 6 ni qabul
+                                            // qilardi va server rad etardi.
                                             validator: (v) =>
-                                                v == null || v.length < 6
-                                                    ? 'Parol juda qisqa'
+                                                v == null || v.trim().length < 8
+                                                    ? 'Parol kamida 8 ta belgi'
+                                                    : null,
+                                          ),
+                                          const _FieldDivider(),
+                                          _DarkField(
+                                            controller: _confirmController,
+                                            label: 'Parolni tasdiqlang',
+                                            icon: Icons.lock_reset_rounded,
+                                            obscure: _obscureConfirm,
+                                            suffix: IconButton(
+                                              icon: Icon(
+                                                _obscureConfirm
+                                                    ? Icons
+                                                        .visibility_off_rounded
+                                                    : Icons.visibility_rounded,
+                                                color: _C.muted,
+                                                size: 20,
+                                              ),
+                                              onPressed: () => setState(() =>
+                                                  _obscureConfirm =
+                                                      !_obscureConfirm),
+                                            ),
+                                            validator: (v) =>
+                                                (v ?? '').trim() !=
+                                                        _passwordController.text
+                                                            .trim()
+                                                    ? 'Parollar mos kelmadi'
                                                     : null,
                                           ),
                                         ],

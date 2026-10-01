@@ -2,6 +2,7 @@
 const List<String> kFaculties = [
   'Turizm va Iqtisodiyot fakulteti',
   "Ta'lim fakulteti",
+  'Jahon tillari va Filologiya fakulteti',
 ];
 
 // Talaba ro'yxatdan o'tishda tanlaydigan joriy kurs
