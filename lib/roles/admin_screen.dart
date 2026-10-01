@@ -914,6 +914,151 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
     );
   }
 
+  /// Adminning bo'lim va amal huquqlari (nomi -> yorlig'i).
+  static const Map<String, String> _huquqNomlari = {
+    'accessDashboard': "Dashboard",
+    'accessUmumiyRoyxat': "Umumiy ro'yxat",
+    'accessTalabalar': "Talabalar va xodimlar",
+    'accessXonalar': "Xonalar",
+    'accessMurojaatlar': "Murojaatlar",
+    'accessRolBoshqaruvi': "Rol boshqaruvi",
+    'accessTolovCheklari': "To'lov cheklari",
+    'accessImtiyozlar': "Ijtimoiy imtiyozlar",
+    'accessSozlamalar': "Sozlamalar",
+    'canEditRooms': "Xonalarni tahrirlash",
+    'canDeleteUsers': "Foydalanuvchini o'chirish",
+    'canExportExcel': "Excel yuklab olish",
+  };
+
+  /// Mavjud adminning huquqlarini tahrirlash oynasi.
+  ///
+  /// Joriy huquqlar serverdan olinadi (ro'yxatda additional_data
+  /// kelmaydi), belgilanadi va PUT orqali saqlanadi. Backend
+  /// additional_data ni faqat superAdmin'dan qabul qiladi.
+  Future<void> _huquqlarniTahrirlash(String userId, String fullName) async {
+    final tanlov = <String, bool>{
+      for (final k in _huquqNomlari.keys) k: false,
+    };
+
+    try {
+      final javob = await ApiService().get('students/$userId?detailed=1');
+      final d = javob['data'];
+      final qosh = d is Map ? d['additional_data'] : null;
+      final perms = qosh is Map ? qosh['permissions'] : null;
+      if (perms is Map) {
+        perms.forEach((k, v) {
+          if (tanlov.containsKey(k.toString())) {
+            tanlov[k.toString()] = v == true;
+          }
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Huquqlarni yuklab bo'lmadi: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    var saqlanmoqda = false;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          backgroundColor: _C.bgCard,
+          title: Text(
+            "Huquqlar: $fullName",
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => setD(() =>
+                            tanlov.updateAll((k, v) => true)),
+                        child: const Text('Hammasini yoqish'),
+                      ),
+                      TextButton(
+                        onPressed: () => setD(() =>
+                            tanlov.updateAll((k, v) => false)),
+                        child: const Text("Hammasini o'chirish"),
+                      ),
+                    ],
+                  ),
+                  for (final e in _huquqNomlari.entries)
+                    CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: tanlov[e.key] ?? false,
+                      activeColor: _C.purple,
+                      title: Text(
+                        e.value,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                      onChanged: (v) =>
+                          setD(() => tanlov[e.key] = v ?? false),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saqlanmoqda ? null : () => Navigator.pop(ctx),
+              child: const Text('Bekor qilish'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _C.purple,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: saqlanmoqda
+                  ? null
+                  : () async {
+                      setD(() => saqlanmoqda = true);
+                      try {
+                        await ApiService().updateStudent(userId, {
+                          'additional_data': {'permissions': tanlov},
+                        });
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Huquqlar saqlandi. Admin qayta kirgach kuchga kiradi.",
+                            ),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      } catch (e) {
+                        setD(() => saqlanmoqda = false);
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("Saqlab bo'lmadi: $e"),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              child: Text(saqlanmoqda ? 'Saqlanmoqda...' : 'Saqlash'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _changeRole(String userId, String newRole) async {
     // Rolni faqat superAdmin o'zgartira oladi - buni backend
     // UserPolicy::changeRole() tekshiradi. Bu yerdagi isSuperAdmin
@@ -1307,6 +1452,33 @@ class __RoleManagementTabState extends State<_RoleManagementTab> {
                               ),
                             );
                           }),
+                          // Huquqlarni tahrirlash: faqat superAdmin va
+                          // faqat admin rolidagilar uchun (o'zidan tashqari).
+                          if (widget.isSuperAdmin &&
+                              currentRole == 'admin' &&
+                              user['id'] != widget.currentUserId)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Tooltip(
+                                message: 'Huquqlarni tahrirlash',
+                                child: GestureDetector(
+                                  onTap: () => _huquqlarniTahrirlash(
+                                      user['id'].toString(), fullName),
+                                  child: Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: _C.purple.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                          color: _C.purple.withOpacity(0.35)),
+                                    ),
+                                    child: const Icon(Icons.admin_panel_settings,
+                                        color: _C.purple, size: 18),
+                                  ),
+                                ),
+                              ),
+                            ),
                           // СЂСџвЂ”вЂРїС‘РЏ O'chirish tugmasi: faqat huquqi bo'lsa
                           // ko'rinadi. O'zini-o'zi va (cheklangan admin
                           // bo'lsa) himoyalangan admin/superAdmin
