@@ -362,6 +362,7 @@ class _TalabalarListState extends State<TalabalarList> {
         );
       }
       _loadData();
+      _soniYukla();
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

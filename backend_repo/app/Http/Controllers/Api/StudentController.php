@@ -7,7 +7,9 @@ use App\Http\Resources\UserListResource;
 use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class StudentController extends Controller
@@ -412,13 +414,26 @@ class StudentController extends Controller
             ], 403);
         }
 
-        $user->tokens()->delete();
-        $user->delete();
+        try {
+            DB::transaction(function () use ($user) {
+                $user->delete();
+            });
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Foydalanuvchi o\'chirildi.'
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Foydalanuvchi muvaffaqiyatli o\'chirildi.'
+            ]);
+        } catch (\Throwable $e) {
+            Log::error("Foydalanuvchini o'chirishda xatolik: " . $e->getMessage(), [
+                'user_id' => $user->id,
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Foydalanuvchini o\'chirishda xatolik: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

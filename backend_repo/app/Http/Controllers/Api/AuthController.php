@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Application;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -437,13 +439,24 @@ class AuthController extends Controller
             return response()->json(['message' => 'Foydalanuvchi topilmadi.'], 404);
         }
 
-        // Tokenlarini bekor qilish va o'chirish
-        $targetUser->tokens()->delete();
-        $targetUser->delete();
+        try {
+            DB::transaction(function () use ($targetUser) {
+                $targetUser->delete();
+            });
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Foydalanuvchi muvaffaqiyatli o\'chirildi.'
-        ]);
+            return response()->json([
+                'success' => true,
+                'message' => 'Foydalanuvchi muvaffaqiyatli o\'chirildi.'
+            ]);
+        } catch (\Throwable $e) {
+            Log::error("deleteUser xatosi: " . $e->getMessage(), [
+                'user_id' => $targetUser->id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Foydalanuvchini o\'chirishda xatolik: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

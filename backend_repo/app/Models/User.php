@@ -52,6 +52,60 @@ class User extends Authenticatable
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user) {
+            // 1. Faol xonalar bandligini qayta hisoblash uchun xona ID larini olamiz
+            $activeRoomIds = RoomStudent::where('student_id', $user->id)
+                ->where('status', 'active')
+                ->pluck('room_id')
+                ->unique();
+
+            // 2. Xona biriktirmalarini o'chiramiz
+            RoomStudent::where('student_id', $user->id)->delete();
+
+            // 3. Xonalar bandligini qayta hisoblab yangilaymiz
+            foreach ($activeRoomIds as $roomId) {
+                $room = Room::find($roomId);
+                $room?->updateOccupancy();
+            }
+
+            // 4. To'lovlar va to'lov cheklarini o'chiramiz
+            Payment::where('student_id', $user->id)->delete();
+            PaymentCheck::where('student_id', $user->id)->delete();
+
+            // 5. Arizalarni o'chiramiz
+            Application::where('user_id', $user->id)->delete();
+
+            // 6. Murojaatlar va ularning biriktirilgan fayllarini o'chiramiz
+            $complaintIds = Complaint::where('student_id', $user->id)->pluck('id');
+            if ($complaintIds->isNotEmpty()) {
+                ComplaintAttachment::whereIn('complaint_id', $complaintIds)->delete();
+                Complaint::whereIn('id', $complaintIds)->delete();
+            }
+
+            // 7. Reyting, bildirishnoma, so'rovnoma javoblari, todo yozuvlari
+            Rating::where('student_id', $user->id)->delete();
+            Notification::where('user_id', $user->id)->delete();
+            SurveyAnswer::where('user_id', $user->id)->delete();
+            Todo::where('owner_id', $user->id)->delete();
+
+            // 8. Boshqa jadvallardagi ushbu foydalanuvchiga bog'langan tashqi kalitlarni bo'shatamiz
+            Payment::where('reviewed_by', $user->id)->update(['reviewed_by' => null]);
+            PaymentCheck::where('reviewed_by', $user->id)->update(['reviewed_by' => null]);
+            Application::where('reviewed_by', $user->id)->update(['reviewed_by' => null]);
+            Complaint::where('assigned_to', $user->id)->update(['assigned_to' => null]);
+            Complaint::where('responded_by', $user->id)->update(['responded_by' => null]);
+            Announcement::where('created_by', $user->id)->update(['created_by' => null]);
+            Expense::where('created_by', $user->id)->update(['created_by' => null]);
+            FinanceBudget::where('created_by', $user->id)->update(['created_by' => null]);
+            Survey::where('created_by', $user->id)->update(['created_by' => null]);
+
+            // 9. Tokenlarni tozalaymiz
+            $user->tokens()->delete();
+        });
+    }
+
     public function roomAssignments()
     {
         return $this->hasMany(RoomStudent::class, 'student_id');
