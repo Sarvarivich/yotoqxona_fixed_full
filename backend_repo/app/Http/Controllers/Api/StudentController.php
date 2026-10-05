@@ -496,7 +496,7 @@ class StudentController extends Controller
         }
 
         $actor = $request->user();
-        if (!$actor || $actor->role !== 'superAdmin') {
+        if (!$actor || !in_array($actor->role, ['admin', 'superAdmin'], true)) {
             return $data;
         }
 
