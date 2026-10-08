@@ -47,7 +47,7 @@ class DatabaseSeeder extends Seeder
         );
 
         // 2. Users
-        $defaultPassword = Hash::make('password123');
+        $defaultPassword = Hash::make('Soyibjonov_2409_2026');
 
         $superAdmin = User::updateOrCreate(
             ['email' => 'superadmin@kuhostel.uz'],
