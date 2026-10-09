@@ -63,7 +63,7 @@ class ComplaintController extends Controller
             'priority' => 'nullable|string|in:low,medium,high,urgent',
             'target_role' => 'nullable|string',
             'is_anonymous' => 'nullable|boolean',
-            'attachments.*' => 'nullable|file|max:10240',
+            'attachments.*' => 'nullable|file|mimes:jpeg,png,jpg,webp,pdf,doc,docx|max:10240',
         ]);
 
         if ($validator->fails()) {
@@ -112,18 +112,27 @@ class ComplaintController extends Controller
     /**
      * Bitta murojaatni ko'rish
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
+        // xavfsizlik-2026: egalik tekshiruvi
         $complaint = Complaint::with(['student', 'hostel', 'attachments', 'respondedBy'])->find($id);
 
         if (!$complaint) {
             return response()->json(['message' => 'Murojaat topilmadi.'], 404);
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => $complaint,
-        ]);
+        $user = $request->user();
+
+        if ($user->role === 'talaba' && $complaint->student_id !== $user->id) {
+            return response()->json(['message' => 'Bu murojaatni ko\'rishga ruxsat yo\'q.'], 403);
+        }
+
+        if ($user->role === 'mudir' && !empty($user->hostel) && $complaint->student
+            && $complaint->student->hostel !== $user->hostel) {
+            return response()->json(['message' => 'Bu murojaatni ko\'rishga ruxsat yo\'q.'], 403);
+        }
+
+        return response()->json(['success' => true, 'data' => $complaint]);
     }
 
     /**

@@ -431,7 +431,7 @@ class StudentController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Foydalanuvchini o\'chirishda xatolik: ' . $e->getMessage(),
+                'message' => 'Foydalanuvchini o\'chirishda xatolik yuz berdi.',
             ], 500);
         }
     }

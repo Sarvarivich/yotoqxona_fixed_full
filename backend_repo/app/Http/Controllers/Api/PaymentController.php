@@ -122,12 +122,24 @@ class PaymentController extends Controller
     /**
      * Bitta to'lovni ko'rish
      */
-    public function show($id)
+    public function show(Request $request, $id)
     {
+        // xavfsizlik-2026: egalik tekshiruvi
         $payment = Payment::with(['student', 'room.hostel', 'reviewer', 'paymentCheck'])->find($id);
 
         if (!$payment) {
             return response()->json(['message' => 'To\'lov topilmadi.'], 404);
+        }
+
+        $user = $request->user();
+
+        if ($user->role === 'talaba' && $payment->student_id !== $user->id) {
+            return response()->json(['message' => 'Bu to\'lovni ko\'rishga ruxsat yo\'q.'], 403);
+        }
+
+        if ($user->role === 'mudir' && !empty($user->hostel)
+            && optional($payment->student)->hostel !== $user->hostel) {
+            return response()->json(['message' => 'Bu to\'lovni ko\'rishga ruxsat yo\'q.'], 403);
         }
 
         $res = $payment->toArray();
@@ -135,10 +147,7 @@ class PaymentController extends Controller
             $res['receipt_url'] = Storage::disk('public')->url($payment->receipt_path);
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => $res,
-        ]);
+        return response()->json(['success' => true, 'data' => $res]);
     }
 
     /**

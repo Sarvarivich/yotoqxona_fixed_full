@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -101,6 +102,8 @@ class AuthController extends Controller
             'has_social_benefit' => 'nullable|boolean',
             'benefit_type' => 'nullable|string',
             'lost_parent_type' => 'nullable|string',
+            'benefit_document' => 'nullable|file|mimes:jpeg,png,jpg,webp,pdf|max:10240',
+            'death_certificate' => 'nullable|file|mimes:jpeg,png,jpg,webp,pdf|max:10240',
         ]);
 
         if ($validator->fails()) {
@@ -386,37 +389,36 @@ class AuthController extends Controller
      */
     public function adminResetPassword(Request $request)
     {
-        $currentUser = $request->user();
-        if (!in_array($currentUser->role, ['superAdmin', 'admin'])) {
-            return response()->json(['message' => 'Ruxsat berilmagan.'], 403);
-        }
-
+        // xavfsizlik-2026: UserPolicy orqali tekshiriladi
         $validator = Validator::make($request->all(), [
             'uid' => 'required|string',
-            'newPassword' => 'required|string|min:6',
+            'newPassword' => 'required|string|min:8',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
-        $targetUser = User::where('id', $request->uid)
-            ->orWhere('firebase_uid', $request->uid)
-            ->first();
+        $targetUser = $this->findUserByUid($request->uid);
 
         if (!$targetUser) {
             return response()->json(['message' => 'Foydalanuvchi topilmadi.'], 404);
         }
 
+        if ($request->user()->cannot('resetPassword', $targetUser)) {
+            return response()->json(['message' => 'Bu foydalanuvchi parolini o\'zgartirishga ruxsat yo\'q.'], 403);
+        }
+
         $targetUser->password = Hash::make($request->newPassword);
         $targetUser->save();
+        $targetUser->tokens()->delete();
 
         return response()->json([
             'success' => true,
-            'message' => 'Foydalanuvchi paroli yangilandi.'
+            'message' => 'Foydalanuvchi paroli yangilandi.',
         ]);
     }
 
@@ -425,18 +427,21 @@ class AuthController extends Controller
      */
     public function deleteUser(Request $request)
     {
-        $currentUser = $request->user();
-        if (!in_array($currentUser->role, ['superAdmin', 'admin'])) {
-            return response()->json(['message' => 'Ruxsat berilmagan.'], 403);
+        // xavfsizlik-2026: UserPolicy orqali tekshiriladi
+        $uid = $request->input('uid') ?? $request->input('id');
+
+        if (!$uid || !is_string($uid)) {
+            return response()->json(['message' => 'Foydalanuvchi ID si kerak.'], 422);
         }
 
-        $uid = $request->input('uid') ?? $request->input('id');
-        $targetUser = User::where('id', $uid)
-            ->orWhere('firebase_uid', $uid)
-            ->first();
+        $targetUser = $this->findUserByUid($uid);
 
         if (!$targetUser) {
             return response()->json(['message' => 'Foydalanuvchi topilmadi.'], 404);
+        }
+
+        if ($request->user()->cannot('delete', $targetUser)) {
+            return response()->json(['message' => 'Bu foydalanuvchini o\'chirishga ruxsat yo\'q.'], 403);
         }
 
         try {
@@ -446,17 +451,25 @@ class AuthController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Foydalanuvchi muvaffaqiyatli o\'chirildi.'
+                'message' => 'Foydalanuvchi muvaffaqiyatli o\'chirildi.',
             ]);
         } catch (\Throwable $e) {
-            Log::error("deleteUser xatosi: " . $e->getMessage(), [
-                'user_id' => $targetUser->id,
-            ]);
+            Log::error('deleteUser xatosi: ' . $e->getMessage(), ['user_id' => $targetUser->id]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Foydalanuvchini o\'chirishda xatolik: ' . $e->getMessage(),
+                'message' => 'Foydalanuvchini o\'chirishda xatolik yuz berdi.',
             ], 500);
         }
+    }
+
+    /**
+     * UUID bo'lsa id bo'yicha, aks holda firebase_uid bo'yicha qidiradi.
+     */
+    private function findUserByUid(string $uid): ?User
+    {
+        return Str::isUuid($uid)
+            ? User::find($uid)
+            : User::where('firebase_uid', $uid)->first();
     }
 }

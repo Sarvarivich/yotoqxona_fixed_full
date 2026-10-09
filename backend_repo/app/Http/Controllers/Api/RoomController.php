@@ -173,7 +173,10 @@ class RoomController extends Controller
             ], 422);
         }
 
-        $room->update($request->all());
+        $room->update($request->only([
+            'room_number', 'floor', 'capacity', 'price_per_month',
+            'status', 'facilities', 'amenities', 'notes',
+        ]));
         $room->updateOccupancy();
         $room->load(['hostel', 'activeStudents']);
 
