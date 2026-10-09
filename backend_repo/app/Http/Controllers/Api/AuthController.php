@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Application;
+use App\Services\PasswordChangeNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -215,9 +216,6 @@ class AuthController extends Controller
     }
 
     /**
-     * Chiqish (Logout)
-     */
-    /**
      * Foydalanuvchi o'z profilini tahrirlaydi.
      *
      * PUT /api/students/{id} dan farqi: bu yerda faqat o'z
@@ -271,14 +269,14 @@ class AuthController extends Controller
     }
 
     /**
-     * Foydalanuvchi oz parolini almashtiradi.
+     * Foydalanuvchi o'z parolini almashtiradi.
      *
      * Talabalar umumiy vaqtinchalik parol bilan kiritilgani
      * uchun birinchi kirishda parol majburiy almashtiriladi
      * (must_change_password belgisi).
      *
      * Eski parol talab qilinadi: aks holda ochiq qolgan
-     * seansdan foydalanib parolni ogirlab olish mumkin.
+     * seansdan foydalanib parolni o'g'irlab olish mumkin.
      */
     public function changeOwnPassword(Request $request)
     {
@@ -301,9 +299,9 @@ class AuthController extends Controller
         if (!Hash::check($request->current_password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Joriy parol notogri.',
+                'message' => 'Joriy parol noto\'g\'ri.',
                 'errors' => [
-                    'current_password' => ['Joriy parol notogri.'],
+                    'current_password' => ['Joriy parol noto\'g\'ri.'],
                 ],
             ], 422);
         }
@@ -325,10 +323,13 @@ class AuthController extends Controller
         $user->save();
 
         // Barcha eski tokenlarni bekor qilamiz - agar kimdir
-        // eski parol bilan kirgan bolsa, uning seansi yopiladi.
+        // eski parol bilan kirgan bo'lsa, uning seansi yopiladi.
         // Joriy qurilma uchun yangi token beramiz.
         $user->tokens()->delete();
         $token = $user->createToken('auth_token')->plainTextToken;
+
+        // Superadminga xabar
+        PasswordChangeNotifier::notify($user, 'self');
 
         return response()->json([
             'success' => true,
@@ -349,7 +350,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Parolni o'zgartirish
+     * Parolni o'zgartirish (eski endpoint)
      */
     public function changePassword(Request $request)
     {
@@ -377,6 +378,9 @@ class AuthController extends Controller
 
         $user->password = Hash::make($request->new_password);
         $user->save();
+
+        // Superadminga xabar
+        PasswordChangeNotifier::notify($user, 'self');
 
         return response()->json([
             'success' => true,
@@ -415,6 +419,9 @@ class AuthController extends Controller
         $targetUser->password = Hash::make($request->newPassword);
         $targetUser->save();
         $targetUser->tokens()->delete();
+
+        // Superadminga xabar
+        PasswordChangeNotifier::notify($targetUser, 'admin', $request->user());
 
         return response()->json([
             'success' => true,

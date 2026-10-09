@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\UserListResource;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\PasswordChangeNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -17,7 +18,7 @@ class StudentController extends Controller
     /**
      * Tahrirlashda ruxsat etilgan maydonlar.
      *
-     * MUHIM: 'role' va 'is_active' bu ro'yxatda ATAYLAB yo'q РІР‚вЂќ ular
+     * MUHIM: 'role' va 'is_active' bu ro'yxatda ATAYLAB yo'q — ular
      * alohida tekshiruvdan keyin qo'shiladi. Ilgari bu metod
      * $request->except(['password']) bilan barcha maydonni ko'r-ko'rona
      * yozardi, shuning uchun mudir {"role":"superAdmin"} yuborib o'zini
@@ -53,7 +54,7 @@ class StudentController extends Controller
      * Talabalar va foydalanuvchilar ro'yxati.
      *
      * Mudir faqat o'z binosidagi foydalanuvchilarni ko'radi.
-     * Javobda shaxsiy maydonlar (JSHSHIR, pasport, manzil) yo'q РІР‚вЂќ
+     * Javobda shaxsiy maydonlar (JSHSHIR, pasport, manzil) yo'q —
      * ular faqat show() da, UserResource orqali beriladi.
      */
     public function index(Request $request)
@@ -67,7 +68,7 @@ class StudentController extends Controller
             ], 403);
         }
 
-        // ?detailed=1 Р Р†Р вЂљРІР‚Сњ to'liq ma'lumot (Excel eksporti uchun).
+        // ?detailed=1 — to'liq ma'lumot (Excel eksporti uchun).
         // Bu endpoint faqat xodimlarga ochiq, shuning uchun to'liq
         // ma'lumot berish xavfsiz. Oddiy ro'yxat esa yengil
         // UserListResource bilan qaytadi.
@@ -85,12 +86,12 @@ class StudentController extends Controller
             $query->where('hostel', $user->hostel);
         }
 
-        // Mudir faqat talabalarni koradi.
+        // Mudir faqat talabalarni ko'radi.
         //
-        // Xodimlar royxati (admin, boshqa mudirlar, moliyachi)
-        // unga kerak emas va ularning shaxsiy malumotlari
+        // Xodimlar ro'yxati (admin, boshqa mudirlar, moliyachi)
+        // unga kerak emas va ularning shaxsiy ma'lumotlari
         // ortiqcha ochilmasligi kerak. Admin va superAdmin uchun
-        // cheklov yoq - ularga rol boshqaruvi uchun kerak.
+        // cheklov yo'q - ularga rol boshqaruvi uchun kerak.
         $korayotgan = $request->user();
         if ($korayotgan && $korayotgan->role === 'mudir') {
             $query->where('role', 'talaba');
@@ -130,7 +131,7 @@ class StudentController extends Controller
 
         $query->orderBy('full_name', 'asc');
 
-        // per_page berilsa РІР‚вЂќ to'liq sahifalangan javob (meta bilan).
+        // per_page berilsa — to'liq sahifalangan javob (meta bilan).
         if ($request->filled('per_page')) {
             $perPage = min(max($request->integer('per_page'), 1), 100);
             $sahifa = $query->paginate($perPage);
@@ -149,7 +150,7 @@ class StudentController extends Controller
             ]);
         }
 
-        // per_page berilmasa РІР‚вЂќ eski shakl (oddiy massiv), lekin cheklangan.
+        // per_page berilmasa — eski shakl (oddiy massiv), lekin cheklangan.
         $jami = (clone $query)->count();
         $royxat = $query->limit(self::CHEKSIZ_SORAGANDA_LIMIT)->get();
 
@@ -329,14 +330,14 @@ class StudentController extends Controller
         }
 
         // Faqat ruxsat etilgan maydonlar olinadi. Bu yerda 'role',
-        // 'is_active' va 'password' YO'Q РІР‚вЂќ ular quyida alohida
+        // 'is_active' va 'password' YO'Q — ular quyida alohida
         // tekshiruvdan o'tadi.
         $data = $request->only(self::TAHRIRLASH_MUMKIN);
 
-        // Admin huquqlari - faqat superAdmin ozgartira oladi.
+        // Admin huquqlari - faqat superAdmin o'zgartira oladi.
         $data = $this->huquqlarniQoshish($request, $data, $user);
 
-        // Rolni o'zgartirish РІР‚вЂќ faqat superAdmin.
+        // Rolni o'zgartirish — faqat superAdmin.
         if ($request->filled('role') && $request->role !== $user->role) {
             if ($actor->cannot('changeRole', User::class)) {
                 return response()->json([
@@ -474,6 +475,9 @@ class StudentController extends Controller
         // Parol almashgach eski tokenlar bekor qilinadi.
         $user->tokens()->delete();
 
+        // Superadminga xabar
+        PasswordChangeNotifier::notify($user, 'admin', $request->user());
+
         return response()->json([
             'success' => true,
             'message' => 'Parol muvaffaqiyatli yangilandi.',
@@ -481,11 +485,11 @@ class StudentController extends Controller
     }
 
     /**
-     * additional_data (admin huquqlari) ni qoshadi.
+     * additional_data (admin huquqlari) ni qo'shadi.
      *
      * FAQAT superAdmin yuborganda qabul qilinadi. Aks holda har
-     * qanday foydalanuvchi ozi yoki boshqaga huquq berib olishi
-     * mumkin edi - bu jiddiy xavfsizlik teshigi bolardi.
+     * qanday foydalanuvchi o'zi yoki boshqaga huquq berib olishi
+     * mumkin edi - bu jiddiy xavfsizlik teshigi bo'lardi.
      *
      * Eski qiymatlar saqlanadi, yangilari ustiga yoziladi.
      */
