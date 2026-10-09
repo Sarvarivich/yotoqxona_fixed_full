@@ -66,6 +66,12 @@ Route::middleware('throttle:10,1')->group(function () {
 
 });
 
+Route::middleware('throttle:5,1')->prefix('password-reset')->group(function () {
+    Route::post('/request', [\App\Http\Controllers\Api\PasswordResetController::class, 'requestCode']);
+    Route::post('/verify',  [\App\Http\Controllers\Api\PasswordResetController::class, 'verifyCode']);
+    Route::post('/confirm', [\App\Http\Controllers\Api\PasswordResetController::class, 'confirmReset']);
+});
+
 // Ro'yxatdan o'tishdan oldin bino tanlash uchun kerak РІР‚вЂќ ochiq qoladi.
 Route::get('/hostels', [HostelController::class, 'index']);
 Route::get('/hostels/{id}', [HostelController::class, 'show']);
