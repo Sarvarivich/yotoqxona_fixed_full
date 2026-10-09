@@ -8,6 +8,7 @@ import '../roles/moliyachi_screen.dart';
 import '../roles/talaba_profile_screen.dart';
 import '../modules/girls/screens/admin/girls_admin_screen.dart';
 import 'register.dart';
+import 'parol_tiklash_dialog.dart';
 
 // ─── LoginScreen: loyihaning kirish sahifasi ───────────────────
 // Muammo: login.dart da LoginScreen classi yo'q edi, faqat
@@ -332,6 +333,22 @@ class _LoginScreenState extends State<LoginScreen>
                           ),
 
                           const SizedBox(height: 20),
+
+                          // Parolni unutdim
+                          Center(
+                            child: TextButton(
+                              onPressed: () => ParolTiklashDialog.show(context),
+                              child: const Text(
+                                "Parolni unutdim?",
+                                style: TextStyle(
+                                  color: _violet,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
 
                           // Ro'yxatdan o'tish havolasi
                           Row(
