@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:yotoqxona/modules/services/api_service.dart';
 
-// ─── Superadmin umumiy dashboard (Laravel API) ───
+// в”Ђв”Ђв”Ђ Superadmin umumiy dashboard (Laravel API) в”Ђв”Ђв”Ђ
 // GET /dashboard chaqiradi. Superadmin/admin/warden uchun to'liq
 // statistika (talabalar, xonalar, arizalar, biriktirishlar, to'lovlar);
-// moliyachi uchun esa faqat to'lov statistikasi qaytadi — shu bois
+// moliyachi uchun esa faqat to'lov statistikasi qaytadi вЂ” shu bois
 // ekran ham ikkala shakldagi javobni tushunadi (checklist #6: "Bularning
 // hammasi Superadminda ko'rinishi").
 class SuperadminDashboardApiScreen extends StatefulWidget {
@@ -191,7 +191,7 @@ class _SuperadminDashboardApiScreenState
             ),
             const SizedBox(height: 12),
             Card(
-              color: Colors.indigo.withOpacity(0.06),
+              color: Colors.indigo.withValues(alpha: 0.06),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -277,3 +277,4 @@ class _SuperadminDashboardApiScreenState
     );
   }
 }
+
