@@ -20,7 +20,7 @@ class HostelController extends Controller
 
     public function show($id)
     {
-        $hostel = Hostel::with(['rooms.activeStudents'])->find($id);
+        $hostel = Hostel::with(['rooms'])->find($id);
 
         if (!$hostel) {
             return response()->json(['message' => 'Yotoqxona binosi topilmadi.'], 404);

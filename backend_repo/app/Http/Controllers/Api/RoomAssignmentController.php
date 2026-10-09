@@ -138,7 +138,7 @@ class RoomAssignmentController extends Controller
     {
         $user = $request->user();
 
-        $assignment = RoomStudent::with(['room.hostel', 'room.activeStudents'])
+        $assignment = RoomStudent::with(['room.hostel', 'room.activeStudents:users.id,users.full_name,users.faculty,users.course,users.group_name'])
             ->where('student_id', $user->id)
             ->where('status', 'active')
             ->first();

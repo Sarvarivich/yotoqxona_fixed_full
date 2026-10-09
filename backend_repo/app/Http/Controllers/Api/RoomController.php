@@ -13,9 +13,22 @@ class RoomController extends Controller
     /**
      * Xonalar ro'yxati
      */
+    /**
+     * Xodimlar xonadagi talabalarning to'liq ma'lumotini, boshqalar
+     * (talaba va h.k.) faqat ism-familiyasini ko'radi.
+     */
+    private function studentsRelation(): string
+    {
+        $role = optional(request()->user())->role;
+
+        return in_array($role, ['mudir', 'moliyachi', 'admin', 'superAdmin'], true)
+            ? 'activeStudents'
+            : 'activeStudents:users.id,users.full_name';
+    }
+
     public function index(Request $request)
     {
-        $query = Room::with(['hostel', 'activeStudents']);
+        $query = Room::with(['hostel', $this->studentsRelation()]);
 
         if ($request->filled('hostel_id')) {
             $query->where('hostel_id', $request->hostel_id);
@@ -133,7 +146,7 @@ class RoomController extends Controller
      */
     public function show($id)
     {
-        $room = Room::with(['hostel', 'activeStudents'])->find($id);
+        $room = Room::with(['hostel', $this->studentsRelation()])->find($id);
 
         if (!$room) {
             return response()->json(['message' => 'Xona topilmadi.'], 404);
