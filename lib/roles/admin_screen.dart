@@ -9,6 +9,7 @@ import '../modules/xonalar/yotoqxona_turlari_screen.dart';
 import '../modules/hisobot/dashboard.dart';
 import '../modules/murojaat/murojaatlar_list.dart';
 import '../modules/bildirishnoma/bildirishnoma_yuborish.dart';
+import '../modules/bildirishnoma/parol_ozgarishlari.dart';
 import '../modules/services/auth_service.dart';
 import '../modules/services/api_service.dart';
 import '../roles/admin_add_user_screen.dart'; // Yangi qo'shiladigan sahifa importi
@@ -76,6 +77,8 @@ class _AdminScreenState extends State<AdminScreen> {
         'accessMurojaatlar'),
     _NavItem('Rol boshqaruvi', Icons.admin_panel_settings_rounded,
         Icons.admin_panel_settings_outlined, _C.violet, 'accessRolBoshqaruvi'),
+    _NavItem("Parol o'zgarishlari", Icons.lock_reset_rounded,
+        Icons.lock_reset_outlined, _C.pink, 'accessParolOzgarishlari'),
     _NavItem("To'lov cheklari", Icons.receipt_long_rounded,
         Icons.receipt_long_outlined, _C.teal, 'accessTolovCheklari'),
     _NavItem('Ijtimoiy imtiyozlar', Icons.volunteer_activism_rounded,
@@ -126,10 +129,11 @@ class _AdminScreenState extends State<AdminScreen> {
         canDelete: _canDeleteUsers,
         currentUserId: widget.user.id,
       ),
+      const ParolOzgarishlari(), // index 6: Rol boshqaruvidan keyin
       TolovCheklariScreen(
           onBack: () => setState(() => _selectedIndex = 0),
           currentUser: widget.user),
-      const IjtimoiyImtiyozlarSahifasi(),
+      IjtimoiyImtiyozlarSahifasi(currentUser: widget.user),
       _AdminSettingsTab(user: widget.user),
     ]);
 
@@ -171,8 +175,10 @@ class _AdminScreenState extends State<AdminScreen> {
   // РІС™В РїС‘РЏ Umumiy ro'yxat bo'limi index 1'ga qo'shilgani sabab, undan keyingi
   // o'z AppBar'iga ega sahifalarning indekslari bittaga suriladi:
   // Talabalar va Hodimlar 1РІвЂ вЂ™2, Rol boshqaruvi 4РІвЂ вЂ™5, To'lov cheklari 5РІвЂ вЂ™6.
+  // Parol o'zgarishlari (6) o'z AppBar'iga ega emas, shuning uchun qobiq
+  // AppBar'i ko'rinadi. To'lov cheklari endi index 7.
   bool get _ownsAppBar =>
-      _selectedIndex == 5 || _selectedIndex == 2 || _selectedIndex == 6;
+      _selectedIndex == 5 || _selectedIndex == 2 || _selectedIndex == 7;
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +195,8 @@ class _AdminScreenState extends State<AdminScreen> {
           ? null
           : _CreativeAppBar(
               title: _navItems[_selectedIndex].label,
-              showGradient: _selectedIndex != 0 && _selectedIndex != 7,
+              showGradient:
+                  _selectedIndex != 0 && _selectedIndex != _navItems.length - 1,
               onMenuTap: () => _scaffoldKey.currentState?.openDrawer(),
               onBellTap: () {
                 Navigator.push(
@@ -396,7 +403,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   // bo'lib qolgan edi РІР‚вЂќ shuning uchun talaba chek yuborganda
                   // "1" belgisi noto'g'ri joyda (Rol boshqaruvida) chiqardi.
                   // To'g'ri joyi РІР‚вЂќ index 6, ya'ni "To'lov cheklari".
-                  if (index == 6 && hasAccess) const _TolovBadgeDot(),
+                  if (index == 7 && hasAccess) const _TolovBadgeDot(),
                   if (isActive)
                     Container(
                       width: 6,
