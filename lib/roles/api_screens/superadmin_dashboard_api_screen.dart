@@ -1,12 +1,10 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:yotoqxona/modules/services/api_service.dart';
+import 'package:yotoqxona/modules/bildirishnoma/bildirishnomalar_list.dart';
 
-// в”Ђв”Ђв”Ђ Superadmin umumiy dashboard (Laravel API) в”Ђв”Ђв”Ђ
-// GET /dashboard chaqiradi. Superadmin/admin/warden uchun to'liq
-// statistika (talabalar, xonalar, arizalar, biriktirishlar, to'lovlar);
-// moliyachi uchun esa faqat to'lov statistikasi qaytadi вЂ” shu bois
-// ekran ham ikkala shakldagi javobni tushunadi (checklist #6: "Bularning
-// hammasi Superadminda ko'rinishi").
+// ─── Superadmin umumiy dashboard (Laravel API) ───
+// GET /dashboard: statistika. GET /notifications: so'nggi bildirishnomalar
+// (parol o'zgarishi haqidagi xabarlar ham shu yerda chiqadi).
 class SuperadminDashboardApiScreen extends StatefulWidget {
   const SuperadminDashboardApiScreen({super.key});
 
@@ -22,6 +20,10 @@ class _SuperadminDashboardApiScreenState
   bool _loading = true;
   String? _error;
   Map<String, dynamic> _data = {};
+
+  // So'nggi bildirishnomalar bo'limi uchun
+  List<Map<String, dynamic>> _bildirishnomalar = [];
+  static const int _korsatiladi = 5;
 
   @override
   void initState() {
@@ -55,6 +57,43 @@ class _SuperadminDashboardApiScreenState
         _loading = false;
       });
     }
+
+    // Bildirishnomalar dashboard'ni to'xtatmasin: xato bo'lsa bo'lim bo'sh qoladi.
+    await _yuklaBildirishnomalar();
+  }
+
+  Future<void> _yuklaBildirishnomalar() async {
+    try {
+      final javob = await _api.get('notifications');
+      final xom = javob['data'];
+      final royxat = <Map<String, dynamic>>[];
+      if (xom is List) {
+        for (final e in xom) {
+          if (e is Map) royxat.add(Map<String, dynamic>.from(e));
+        }
+      }
+      royxat.sort((a, b) {
+        final sa = DateTime.tryParse((a['created_at'] ?? '').toString());
+        final sb = DateTime.tryParse((b['created_at'] ?? '').toString());
+        if (sa == null && sb == null) return 0;
+        if (sa == null) return 1;
+        if (sb == null) return -1;
+        return sb.compareTo(sa);
+      });
+      if (!mounted) return;
+      setState(() => _bildirishnomalar = royxat);
+    } catch (_) {
+      // Jim qolamiz: dashboard ishlashda davom etadi.
+    }
+  }
+
+  void _barchasiniOchish() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const BildirishnomalarList(userId: '', hostel: ''),
+      ),
+    );
   }
 
   num _n(Map? m, String key) {
@@ -64,6 +103,14 @@ class _SuperadminDashboardApiScreenState
     return num.tryParse(v?.toString() ?? '0') ?? 0;
   }
 
+  String _sana(String? iso) {
+    final d = DateTime.tryParse(iso ?? '');
+    if (d == null) return '';
+    final l = d.toLocal();
+    String two(int x) => x.toString().padLeft(2, '0');
+    return "${two(l.day)}.${two(l.month)}.${l.year} ${two(l.hour)}:${two(l.minute)}";
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -71,6 +118,7 @@ class _SuperadminDashboardApiScreenState
         title: const Text("Umumiy dashboard"),
         actions: [
           IconButton(
+            tooltip: 'Yangilash',
             icon: const Icon(Icons.refresh),
             onPressed: _loading ? null : _load,
           ),
@@ -114,6 +162,9 @@ class _SuperadminDashboardApiScreenState
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _bildirishnomaBolimi(),
+          const SizedBox(height: 20),
+
           if (students != null || rooms != null) ...[
             GridView.count(
               crossAxisCount: 2,
@@ -213,6 +264,76 @@ class _SuperadminDashboardApiScreenState
     );
   }
 
+  /// Alohida bo'lim: so'nggi bildirishnomalar va "Barchasi" tugmasi.
+  Widget _bildirishnomaBolimi() {
+    final korsatish = _bildirishnomalar.take(_korsatiladi).toList();
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.notifications_active,
+                    color: Colors.indigo.shade700),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    "Bildirishnomalar",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _barchasiniOchish,
+                  child: const Text("Barchasi"),
+                ),
+              ],
+            ),
+            const Divider(),
+            if (korsatish.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  "Bildirishnomalar yo'q",
+                  style: TextStyle(color: Colors.black54),
+                ),
+              )
+            else
+              ...korsatish.map((n) {
+                final oqilgan = n['is_read'] == true || n['is_read'] == 1;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: Icon(
+                    oqilgan ? Icons.notifications_none : Icons.notifications,
+                    color: oqilgan ? Colors.grey : Colors.indigo,
+                  ),
+                  title: Text(
+                    (n['title'] ?? '').toString(),
+                    style: TextStyle(
+                      fontWeight:
+                          oqilgan ? FontWeight.normal : FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: Text(
+                    "${(n['message'] ?? '').toString()}\n${_sana(n['created_at']?.toString())}",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  isThreeLine: true,
+                  onTap: _barchasiniOchish,
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _statCard({
     required IconData icon,
     required Color color,
@@ -277,4 +398,3 @@ class _SuperadminDashboardApiScreenState
     );
   }
 }
-
