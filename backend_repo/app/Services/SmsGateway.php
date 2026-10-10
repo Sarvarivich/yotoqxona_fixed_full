@@ -3,36 +3,54 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
- * SMS yuborish. Kredensiallar Railway Variables'da saqlanadi:
- *   SMS_GATEWAY_URL, SMS_GATEWAY_TOKEN, SMS_SENDER
+ * DevSMS orqali parol tiklash kodini yuborish (universal_otp, template_type=2).
  *
- * DIQQAT: so'rov tanasi (payload) provayderning hujjatiga qarab
- * o'zgartirilishi kerak. Hozirgi shakl umumiy (phone, text, sender).
+ * Railway Variables:
+ *   DEVSMS_TOKEN         - DevSMS kabinetidagi API token (chatga yozmang)
+ *   DEVSMS_SERVICE_NAME  - xizmat nomi, 2-50 belgi, faqat harf/raqam/bo'shliq/nuqta/chiziqcha
+ *                          (standart: "KU Hostel")
  */
 class SmsGateway
 {
-    public static function send(string $phone, string $text): void
-    {
-        $url = env('SMS_GATEWAY_URL');
-        $token = env('SMS_GATEWAY_TOKEN');
+    private const URL = 'https://devsms.uz/api/send_sms.php';
+    private const TEMPLATE_PASSWORD_RESET = 2;
 
-        if (!$url || !$token) {
-            throw new \RuntimeException('SMS gateway sozlanmagan.');
+    /**
+     * Parol tiklash kodini yuboradi. Xato bo'lsa RuntimeException tashlaydi.
+     */
+    public static function sendOtp(string $phone, string $code): void
+    {
+        $token = env('DEVSMS_TOKEN');
+        if (!$token) {
+            throw new \RuntimeException('DevSMS sozlanmagan: DEVSMS_TOKEN yo\'q.');
+        }
+
+        $digits = preg_replace('/\D+/', '', $phone);
+        if (strlen($digits) === 9) {
+            $digits = '998' . $digits;
         }
 
         $response = Http::withToken($token)
             ->timeout(15)
             ->acceptJson()
-            ->post($url, [
-                'phone'  => $phone,
-                'text'   => $text,
-                'sender' => env('SMS_SENDER', 'KU HOSTEL'),
+            ->post(self::URL, [
+                'phone' => $digits,
+                'type' => 'universal_otp',
+                'template_type' => self::TEMPLATE_PASSWORD_RESET,
+                'service_name' => env('DEVSMS_SERVICE_NAME', 'KU Hostel'),
+                'otp_code' => $code,
             ]);
 
-        if (!$response->successful()) {
-            throw new \RuntimeException('SMS gateway xato: HTTP ' . $response->status());
+        $javob = $response->json();
+        if (!$response->successful() || empty($javob['success'])) {
+            Log::error('DevSMS OTP yuborilmadi', [
+                'http' => $response->status(),
+                'javob' => $response->body(),
+            ]);
+            throw new \RuntimeException('DevSMS OTP yuborilmadi.');
         }
     }
 }
