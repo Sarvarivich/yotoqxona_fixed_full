@@ -15,8 +15,8 @@ use Illuminate\Support\Str;
 
 class PasswordResetController extends Controller
 {
-    // Javob hech qachon raqam tizimda borligini oshkor qilmaydi.
-    private const GENERIC = "Agar bu raqam tizimda bo'lsa, tasdiqlash kodi yuborildi.";
+    // Javob hech qachon hisob mavjudligini oshkor qilmaydi.
+    private const GENERIC = "Agar email va telefon ma'lumotlari to'g'ri bo'lsa, tasdiqlash kodi yuborildi.";
 
     private const CODE_TTL_MIN = 5;
     private const RESET_TTL_MIN = 10;
@@ -24,14 +24,13 @@ class PasswordResetController extends Controller
     private const RESEND_COOLDOWN_SEC = 60;
 
     /**
-     * Telefon bo'yicha yagona talabani topadi.
-     * Raqamlar solishtirilganda faqat oxirgi 9 ta raqam olinadi
-     * (format: +998..., 998..., 90 123 45 67 va h.k. bir xil ishlaydi).
-     * Bir nechta talaba bo'lsa null qaytaradi (xavfsizlik uchun).
+     * Email VA telefon bir xil talabaga tegishli bo'lsagina foydalanuvchini qaytaradi.
+     * Telefon solishtirilganda faqat oxirgi 9 ta raqam olinadi
+     * (+998..., 998..., 90 123 45 67 va h.k. bir xil ishlaydi).
      */
-    private function findStudentByPhone(string $raw): ?User
+    private function findStudent(string $email, string $phone): ?User
     {
-        $digits = preg_replace('/\D+/', '', $raw);
+        $digits = preg_replace('/\D+/', '', $phone);
         if (strlen($digits) < 9) {
             return null;
         }
@@ -39,33 +38,28 @@ class PasswordResetController extends Controller
 
         $matches = User::where('role', 'talaba')
             ->where('is_active', true)
+            ->whereRaw('lower(email) = ?', [strtolower(trim($email))])
             ->whereRaw("right(regexp_replace(phone, '\\D', '', 'g'), 9) = ?", [$last9])
             ->limit(2)
             ->get();
 
-        if ($matches->count() !== 1) {
-            if ($matches->count() > 1) {
-                Log::warning('Parol tiklash: telefon raqami bir nechta talabada.', ['last9' => $last9]);
-            }
-            return null;
-        }
-
-        return $matches->first();
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     /**
-     * 1-qadam: telefon raqami bo'yicha kod yuborish.
+     * 1-qadam: email + telefon mos kelsa, bazadagi telefonga kod yuborish.
      */
     public function requestCode(Request $request)
     {
         $validator = Validator::make($request->all(), [
+            'email' => 'required|string|max:255',
             'phone' => 'required|string|max:30',
         ]);
         if ($validator->fails()) {
-            return response()->json(['success' => false, 'message' => "Telefon raqamini kiriting."], 422);
+            return response()->json(['success' => false, 'message' => "Email va telefon raqamini kiriting."], 422);
         }
 
-        $user = $this->findStudentByPhone($request->phone);
+        $user = $this->findStudent($request->email, $request->phone);
         if (!$user) {
             return response()->json(['success' => true, 'message' => self::GENERIC]);
         }
@@ -112,11 +106,12 @@ class PasswordResetController extends Controller
     }
 
     /**
-     * 2-qadam: kodni tekshirish. To'g'ri bo'lsa, qisqa muddatli reset_token qaytaradi.
+     * 2-qadam: email + telefon + kodni tekshirish. To'g'ri bo'lsa, qisqa muddatli reset_token qaytaradi.
      */
     public function verifyCode(Request $request)
     {
         $validator = Validator::make($request->all(), [
+            'email' => 'required|string|max:255',
             'phone' => 'required|string|max:30',
             'code'  => 'required|digits:6',
         ]);
@@ -126,7 +121,7 @@ class PasswordResetController extends Controller
 
         $xato = "Kod noto'g'ri yoki muddati tugagan.";
 
-        $user = $this->findStudentByPhone($request->phone);
+        $user = $this->findStudent($request->email, $request->phone);
         if (!$user) {
             return response()->json(['success' => false, 'message' => $xato], 422);
         }
