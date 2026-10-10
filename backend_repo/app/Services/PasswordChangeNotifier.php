@@ -25,9 +25,10 @@ class PasswordChangeNotifier
                 default      => $method,
             };
 
+            // Xabar ichidagi vaqt Toshkent vaqtida chiqadi (UTC+5)
             $message = "{$target->full_name} (ID: {$target->id}) parolini o'zgartirdi.\n"
                      . "Kim: {$who}\n"
-                     . 'Vaqt: ' . now()->format('d.m.Y H:i');
+                     . 'Vaqt: ' . now()->setTimezone('Asia/Tashkent')->format('d.m.Y H:i');
 
             $superAdminIds = User::where('role', 'superAdmin')
                 ->where('is_active', true)

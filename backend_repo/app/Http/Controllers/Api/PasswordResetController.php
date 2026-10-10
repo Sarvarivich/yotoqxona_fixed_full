@@ -93,11 +93,8 @@ class PasswordResetController extends Controller
         ]);
 
         try {
-            // Kod FAQAT bazadagi raqamga yuboriladi
-            SmsGateway::send(
-                $user->phone,
-                "KU Hostel: parolni tiklash kodi: {$kod}. Kod " . self::CODE_TTL_MIN . " daqiqa amal qiladi. Kodni hech kimga bermang."
-            );
+            // Kod FAQAT bazadagi raqamga yuboriladi (DevSMS universal_otp)
+            SmsGateway::sendOtp($user->phone, $kod);
         } catch (\Throwable $e) {
             Log::error('Parol tiklash SMS yuborilmadi: ' . $e->getMessage(), ['user_id' => $user->id]);
         }
