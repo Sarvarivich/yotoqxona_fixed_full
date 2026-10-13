@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../modules/services/api_service.dart';
 
-// "Parolni unutdim" oynasi. Oqim: telefon -> 6 xonali kod -> yangi parol -> tasdiqlash.
+// "Parolni unutdim" oynasi.
+// Oqim: email -> telefon -> 6 xonali kod -> yangi parol -> tasdiqlash.
+// Kod faqat email va telefon bitta talabaga tegishli bo'lsa yuboriladi.
 class ParolTiklashDialog extends StatefulWidget {
   const ParolTiklashDialog({super.key});
 
@@ -18,7 +20,7 @@ class ParolTiklashDialog extends StatefulWidget {
   State<ParolTiklashDialog> createState() => _ParolTiklashDialogState();
 }
 
-enum _Qadam { telefon, kod, yangiParol, tayyor }
+enum _Qadam { email, telefon, kod, yangiParol, tayyor }
 
 class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
   static const _card = Color(0xFF13102A);
@@ -29,8 +31,9 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
   static const _muted = Color(0x99FFFFFF);
 
   final _api = ApiService();
-  _Qadam _qadam = _Qadam.telefon;
+  _Qadam _qadam = _Qadam.email;
 
+  final _email = TextEditingController();
   final _telefon = TextEditingController();
   final _kod = TextEditingController();
   final _parol = TextEditingController();
@@ -39,6 +42,7 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
   bool _yuklanmoqda = false;
   bool _korsatish = false;
   String? _xato;
+  String? _info;
   String? _resetToken;
 
   @override
@@ -49,6 +53,7 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
 
   @override
   void dispose() {
+    _email.dispose();
     _telefon.dispose();
     _kod.dispose();
     _parol.dispose();
@@ -76,6 +81,7 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
     setState(() {
       _yuklanmoqda = true;
       _xato = null;
+      _info = null;
     });
     try {
       await amal();
@@ -86,18 +92,40 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
     }
   }
 
+  // 1-qadam: email tekshiruvi (faqat format, bazada borligini tekshirmaymiz)
+  void _emailKeyingi() {
+    final email = _email.text.trim();
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      setState(() => _xato = "Email manzilini to'liq kiriting.");
+      return;
+    }
+    setState(() {
+      _xato = null;
+      _qadam = _Qadam.telefon;
+    });
+  }
+
+  // 2-qadam: telefon bilan kod so'rash
   Future<void> _kodYubor() => _bajar(() async {
         final tel = _telefon.text.trim();
         if (tel.replaceAll(RegExp(r'\D'), '').length < 9) {
           throw ApiException(message: "Telefon raqamini to'liq kiriting.");
         }
-        await _api.post('password-reset/request',
-            body: {'phone': tel}, auth: false);
-        if (mounted) setState(() => _qadam = _Qadam.kod);
+        final javob = await _api.post('password-reset/request', auth: false, body: {
+          'email': _email.text.trim(),
+          'phone': tel,
+        });
+        if (mounted) {
+          setState(() {
+            _info = javob['message']?.toString();
+            _qadam = _Qadam.kod;
+          });
+        }
       });
 
   Future<void> _kodTasdiqla() => _bajar(() async {
         final javob = await _api.post('password-reset/verify', auth: false, body: {
+          'email': _email.text.trim(),
           'phone': _telefon.text.trim(),
           'code': _kod.text.trim(),
         });
@@ -109,10 +137,8 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
       });
 
   Future<void> _parolniSaqla() => _bajar(() async {
-        final qoidalar = _qoidalar;
-        if (qoidalar.values.any((ok) => !ok)) {
-          throw ApiException(
-              message: "Parol talablarga javob bermayapti.");
+        if (_qoidalar.values.any((ok) => !ok)) {
+          throw ApiException(message: "Parol talablarga javob bermayapti.");
         }
         if (_parol.text != _parol2.text) {
           throw ApiException(message: "Parollar bir xil emas.");
@@ -144,11 +170,12 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
   }
 
   Widget _qadamBelgisi() {
-    final index = _Qadam.values.indexOf(_qadam);
+    const qadamlar = [_Qadam.email, _Qadam.telefon, _Qadam.kod, _Qadam.yangiParol];
+    final index = qadamlar.indexOf(_qadam);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (i) {
-        final faol = i <= index && _qadam != _Qadam.tayyor;
+      children: List.generate(qadamlar.length, (i) {
+        final faol = _qadam != _Qadam.tayyor && i <= index;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -188,34 +215,64 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
     );
   }
 
-  Widget _xatoKarta() {
-    if (_xato == null) return const SizedBox.shrink();
+  Widget _xabarKarta({required String matn, required bool xato}) {
+    final rang = xato ? _pink : _teal;
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: _pink.withOpacity(0.12),
+        color: rang.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _pink.withOpacity(0.4)),
+        border: Border.all(color: rang.withOpacity(0.4)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline_rounded, color: _pink, size: 18),
+          Icon(xato ? Icons.error_outline_rounded : Icons.info_outline_rounded,
+              color: rang, size: 18),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(_xato!,
-                style: const TextStyle(color: _pink, fontSize: 12.5)),
+            child: Text(matn, style: TextStyle(color: rang, fontSize: 12.5)),
           ),
         ],
       ),
     );
   }
 
+  Widget _xatoKarta() {
+    if (_xato == null) return const SizedBox.shrink();
+    return _xabarKarta(matn: _xato!, xato: true);
+  }
+
+  Widget _infoKarta() {
+    if (_info == null || _xato != null) return const SizedBox.shrink();
+    return _xabarKarta(matn: _info!, xato: false);
+  }
+
+  Widget _emailQadami() => Column(
+        key: const ValueKey('email'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text("Tizim tomonidan biriktirilgan email manzilingizni kiriting.",
+              style: TextStyle(color: _muted, fontSize: 13)),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            style: const TextStyle(color: Colors.white),
+            decoration: _maydon("email@example.com", Icons.mail_outline_rounded),
+          ),
+          _xatoKarta(),
+          const SizedBox(height: 20),
+          _tugma("Davom etish", _emailKeyingi),
+        ],
+      );
+
   Widget _telefonQadami() => Column(
         key: const ValueKey('telefon'),
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text("Tizimga biriktirilgan telefon raqamingizni kiriting.",
+          const Text("Shu hisobga biriktirilgan telefon raqamingizni kiriting.",
               style: TextStyle(color: _muted, fontSize: 13)),
           const SizedBox(height: 16),
           TextField(
@@ -228,6 +285,18 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
           _xatoKarta(),
           const SizedBox(height: 20),
           _tugma("Kod yuborish", _kodYubor),
+          const SizedBox(height: 10),
+          Center(
+            child: TextButton(
+              onPressed: _yuklanmoqda
+                  ? null
+                  : () => setState(() {
+                        _xato = null;
+                        _qadam = _Qadam.email;
+                      }),
+              child: const Text("Orqaga", style: TextStyle(color: _muted)),
+            ),
+          ),
         ],
       );
 
@@ -236,9 +305,10 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            "${_telefon.text.trim()} raqamiga yuborilgan 6 xonali kodni kiriting. Kod 5 daqiqa amal qiladi.",
+            "${_email.text.trim().isNotEmpty ? _email.text.trim() : 'Email'} manzilingizga yuborilgan 6 xonali kodni kiriting. Kod 5 daqiqa amal qiladi.",
             style: const TextStyle(color: _muted, fontSize: 13),
           ),
+          _infoKarta(),
           const SizedBox(height: 16),
           TextField(
             controller: _kod,
@@ -248,7 +318,8 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             style: const TextStyle(
                 color: Colors.white, fontSize: 24, letterSpacing: 12),
-            decoration: _maydon("••••••", Icons.pin_outlined).copyWith(counterText: ''),
+            decoration: _maydon("••••••", Icons.pin_outlined)
+                .copyWith(counterText: ''),
           ),
           _xatoKarta(),
           const SizedBox(height: 20),
@@ -269,8 +340,7 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
                 size: 14, color: ok ? _teal : _muted),
             const SizedBox(width: 6),
             Text(matn,
-                style: TextStyle(
-                    color: ok ? _teal : _muted, fontSize: 11.5)),
+                style: TextStyle(color: ok ? _teal : _muted, fontSize: 11.5)),
           ],
         ),
       );
@@ -288,10 +358,13 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
             controller: _parol,
             obscureText: !_korsatish,
             style: const TextStyle(color: Colors.white),
-            decoration: _maydon("Yangi parol", Icons.lock_outline_rounded).copyWith(
+            decoration:
+                _maydon("Yangi parol", Icons.lock_outline_rounded).copyWith(
               suffixIcon: IconButton(
                 icon: Icon(
-                  _korsatish ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  _korsatish
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
                   color: _muted,
                   size: 20,
                 ),
@@ -312,7 +385,8 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
             controller: _parol2,
             obscureText: !_korsatish,
             style: const TextStyle(color: Colors.white),
-            decoration: _maydon("Parolni tasdiqlang", Icons.lock_reset_rounded),
+            decoration:
+                _maydon("Parolni tasdiqlang", Icons.lock_reset_rounded),
           ),
           _xatoKarta(),
           const SizedBox(height: 20),
@@ -337,7 +411,8 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
                     offset: const Offset(0, 8)),
               ],
             ),
-            child: const Icon(Icons.check_rounded, color: Colors.white, size: 40),
+            child:
+                const Icon(Icons.check_rounded, color: Colors.white, size: 40),
           ),
           const SizedBox(height: 16),
           const Text("Parol yangilandi",
@@ -357,6 +432,7 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
   @override
   Widget build(BuildContext context) {
     final body = switch (_qadam) {
+      _Qadam.email => _emailQadami(),
       _Qadam.telefon => _telefonQadami(),
       _Qadam.kod => _kodQadami(),
       _Qadam.yangiParol => _yangiParolQadami(),
@@ -395,7 +471,8 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
                       color: _purple.withOpacity(0.18),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.lock_reset_rounded, color: _violet, size: 20),
+                    child: const Icon(Icons.lock_reset_rounded,
+                        color: _violet, size: 20),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(
@@ -413,8 +490,10 @@ class _ParolTiklashDialogState extends State<ParolTiklashDialog> {
                 ],
               ),
               const SizedBox(height: 14),
-              _qadamBelgisi(),
-              const SizedBox(height: 20),
+              if (_qadam != _Qadam.tayyor) ...[
+                _qadamBelgisi(),
+                const SizedBox(height: 20),
+              ],
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
                 child: body,

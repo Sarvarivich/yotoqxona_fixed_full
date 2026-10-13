@@ -180,7 +180,7 @@ class StudentController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'full_name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email',
+            'email' => 'required|string|email:filter|max:255|unique:users,email',
             'password' => 'required|string|min:8',
             'role' => 'required|string|in:talaba,mudir,moliyachi,admin,superAdmin',
             'hostel' => 'nullable|string|in:boys,girls',
@@ -307,7 +307,7 @@ class StudentController extends Controller
 
         $validator = Validator::make($request->all(), [
             'full_name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|email|unique:users,email,' . $user->id,
+            'email' => 'sometimes|email:filter|unique:users,email,' . $user->id,
             'phone' => 'nullable|string|max:30',
             'faculty' => 'nullable|string',
             'course' => 'nullable|integer',

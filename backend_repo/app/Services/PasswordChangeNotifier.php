@@ -21,7 +21,7 @@ class PasswordChangeNotifier
             $who = match ($method) {
                 'self'       => "talaba o'zi",
                 'admin'      => 'admin: ' . ($actor?->full_name ?? '—'),
-                'reset_code' => 'SMS kod orqali tiklash',
+                'reset_code' => 'email kod orqali tiklash',
                 default      => $method,
             };
 

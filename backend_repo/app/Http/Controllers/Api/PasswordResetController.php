@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
 class PasswordResetController extends Controller
 {
     // Javob hech qachon hisob mavjudligini oshkor qilmaydi.
-    private const GENERIC = "Agar email va telefon ma'lumotlari to'g'ri bo'lsa, tasdiqlash kodi yuborildi.";
+    private const GENERIC = "Agar email va telefon ma'lumotlari to'g'ri bo'lsa, tasdiqlash kodi emailga yuborildi.";
 
     private const CODE_TTL_MIN = 5;
     private const RESET_TTL_MIN = 10;
@@ -39,9 +39,11 @@ class PasswordResetController extends Controller
         $matches = User::where('role', 'talaba')
             ->where('is_active', true)
             ->whereRaw('lower(email) = ?', [strtolower(trim($email))])
-            ->whereRaw("right(regexp_replace(phone, '\\D', '', 'g'), 9) = ?", [$last9])
-            ->limit(2)
-            ->get();
+            ->get()
+            ->filter(function ($u) use ($last9) {
+                $uDigits = preg_replace('/\D+/', '', (string) $u->phone);
+                return strlen($uDigits) >= 9 && substr($uDigits, -9) === $last9;
+            });
 
         return $matches->count() === 1 ? $matches->first() : null;
     }
@@ -95,4 +97,149 @@ class PasswordResetController extends Controller
         try {
             // Kod FAQAT bazadagi talaba emailiga yuboriladi
             Mail::raw(
-                "Parolni tiklash kodi: {$kod}\n\nKod 5 daqiqa amal qiladi. Agar bu so'rovni siz
+                "Parolni tiklash kodi: {$kod}\n\nKod 5 daqiqa amal qiladi. Agar bu so'rovni siz yubormagan bo'lsangiz, xabarni e'tiborsiz qoldiring.",
+                function ($message) use ($user) {
+                    $message->to($user->email)
+                        ->subject("Parolni tiklash kodi");
+                }
+            );
+        } catch (\Throwable $e) {
+            Log::error('Parol tiklash email yuborilmadi: ' . $e->getMessage(), ['user_id' => $user->id]);
+        }
+
+        return response()->json(['success' => true, 'message' => self::GENERIC]);
+    }
+
+    /**
+     * 2-qadam: email + telefon + kodni tekshirish. To'g'ri bo'lsa, qisqa muddatli reset_token qaytaradi.
+     */
+    public function verifyCode(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|string|max:255',
+            'phone' => 'required|string|max:30',
+            'code'  => 'required|digits:6',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => "Kod 6 ta raqamdan iborat bo'lishi kerak."], 422);
+        }
+
+        $xato = "Kod noto'g'ri yoki muddati tugagan.";
+
+        $user = $this->findStudent($request->email, $request->phone);
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => $xato], 422);
+        }
+
+        $kod = DB::table('password_reset_codes')
+            ->where('user_id', $user->id)
+            ->whereNull('used_at')
+            ->whereNull('verified_at')
+            ->where('expires_at', '>', now())
+            ->orderByDesc('created_at')
+            ->first();
+
+        if (!$kod || $kod->attempts >= self::MAX_ATTEMPTS) {
+            return response()->json(['success' => false, 'message' => $xato], 422);
+        }
+
+        DB::table('password_reset_codes')->where('id', $kod->id)
+            ->update(['attempts' => $kod->attempts + 1, 'updated_at' => now()]);
+
+        if (!Hash::check($request->code, $kod->code_hash)) {
+            $qoldi = self::MAX_ATTEMPTS - ($kod->attempts + 1);
+            if ($qoldi <= 0) {
+                DB::table('password_reset_codes')->where('id', $kod->id)
+                    ->update(['used_at' => now(), 'updated_at' => now()]);
+                return response()->json(['success' => false, 'message' => "Urinishlar tugadi. Yangi kod so'rang."], 422);
+            }
+            return response()->json([
+                'success' => false,
+                'message' => "Kod noto'g'ri. Qolgan urinishlar: {$qoldi}.",
+            ], 422);
+        }
+
+        $token = Str::random(64);
+        DB::table('password_reset_codes')->where('id', $kod->id)->update([
+            'reset_token_hash' => hash('sha256', $token),
+            'verified_at'      => now(),
+            'expires_at'       => now()->addMinutes(self::RESET_TTL_MIN),
+            'updated_at'       => now(),
+        ]);
+
+        return response()->json(['success' => true, 'reset_token' => $token]);
+    }
+
+    /**
+     * 3-qadam: yangi parolni o'rnatish.
+     */
+    public function confirmReset(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'reset_token' => 'required|string|size:64',
+            'password' => [
+                'required', 'string', 'min:12', 'confirmed',
+                'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[0-9]/', 'regex:/[^a-zA-Z0-9]/',
+            ],
+            'password_confirmation' => 'required|string',
+        ], [
+            'password.min' => "Parol kamida 12 ta belgidan iborat bo'lishi kerak.",
+            'password.regex' => "Parolda katta harf, kichik harf, raqam va belgi bo'lishi shart.",
+            'password.confirmed' => "Parollar bir xil emas.",
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $yaroqsiz = response()->json([
+            'success' => false,
+            'message' => "Tiklash sessiyasi tugagan. Qaytadan urinib ko'ring.",
+        ], 422);
+
+        $kod = DB::table('password_reset_codes')
+            ->where('reset_token_hash', hash('sha256', $request->reset_token))
+            ->whereNotNull('verified_at')
+            ->whereNull('used_at')
+            ->where('expires_at', '>', now())
+            ->first();
+
+        if (!$kod) {
+            return $yaroqsiz;
+        }
+
+        $user = User::find($kod->user_id);
+        if (!$user || !$user->is_active || $user->role !== 'talaba') {
+            return $yaroqsiz;
+        }
+
+        if (Hash::check($request->password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Yangi parol eskisidan farq qilishi kerak.",
+            ], 422);
+        }
+
+        $user->password = Hash::make($request->password);
+        $user->must_change_password = false;
+        $user->save();
+
+        DB::table('password_reset_codes')->where('id', $kod->id)
+            ->update(['used_at' => now(), 'updated_at' => now()]);
+
+        // Eski seanslarni (tokenlarni) bekor qilamiz
+        DB::table('personal_access_tokens')
+            ->where('tokenable_id', $user->id)
+            ->delete();
+
+        PasswordChangeNotifier::notify($user, 'reset_code');
+
+        return response()->json([
+            'success' => true,
+            'message' => "Parol muvaffaqiyatli yangilandi. Yangi parol bilan kirishingiz mumkin.",
+        ]);
+    }
+}

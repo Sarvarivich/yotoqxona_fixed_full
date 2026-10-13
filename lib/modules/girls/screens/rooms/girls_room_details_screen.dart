@@ -47,79 +47,78 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-  /// Ro'yxatdan o'tgan qiz talabalarni yuklaydi.
-  ///
-  /// Ilgari 'foydalanuvchilar' kolleksiyasi real vaqtda tinglanardi.
-  /// Endi Laravel'dan bir marta olinadi.
-  /// Qiz talabalarni server tomonda qidiradi.
-  ///
-  /// NEGA QIDIRUV, DROPDOWN EMAS
-  /// ---------------------------
-  /// Ilgari barcha talabalar yuklanib, dropdown ga solinardi. 2000
-  /// talabada bu uch muammo tugdiradi:
-  ///   1) backend bir sorovda 100 tadan kop bermaydi - qolganlari
-  ///      umuman korinmasdi;
-  ///   2) 2000 elementli dropdown ilovani sekinlashtiradi;
-  ///   3) kerakli odamni royxatdan topish deyarli imkonsiz.
-  ///
-  /// Endi faqat qidiruvga mos 70 ta natija yuklanadi.
-  Future<List<Map<String, dynamic>>> _talabaQidir(String matn) async {
-    final natija = <Map<String, dynamic>>[];
+    /// Ro'yxatdan o'tgan qiz talabalarni yuklaydi.
+    ///
+    /// Ilgari 'foydalanuvchilar' kolleksiyasi real vaqtda tinglanardi.
+    /// Endi Laravel'dan bir marta olinadi.
+    /// Qiz talabalarni server tomonda qidiradi.
+    ///
+    /// NEGA QIDIRUV, DROPDOWN EMAS
+    /// ---------------------------
+    /// Ilgari barcha talabalar yuklanib, dropdown ga solinardi. 2000
+    /// talabada bu uch muammo tugdiradi:
+    ///   1) backend bir sorovda 100 tadan kop bermaydi - qolganlari
+    ///      umuman korinmasdi;
+    ///   2) 2000 elementli dropdown ilovani sekinlashtiradi;
+    ///   3) kerakli odamni royxatdan topish deyarli imkonsiz.
+    ///
+    /// Endi faqat qidiruvga mos 70 ta natija yuklanadi.
+    Future<List<Map<String, dynamic>>> _talabaQidir(String matn) async {
+      final natija = <Map<String, dynamic>>[];
 
-    try {
-      final parametrlar = <String, String>{
-        'role': 'talaba',
-        'hostel': 'girls',
-        'per_page': '70',
-      };
-      if (matn.trim().isNotEmpty) {
-        parametrlar['search'] = matn.trim();
-      }
-
-      final javob = await ApiService().get(
-        'students?${Uri(queryParameters: parametrlar).query}',
-      );
-
-      // Backend ba'zan paginate() obyektini qaytaradi.
-      final xom = javob['data'];
-      final royxat = xom is Map ? xom['data'] : xom;
-
-      if (royxat is List) {
-        for (final e in royxat) {
-          if (e is Map) natija.add(Map<String, dynamic>.from(e));
+      try {
+        final parametrlar = <String, String>{
+          'role': 'talaba',
+          'hostel': 'girls',
+          'per_page': '70',
+        };
+        if (matn.trim().isNotEmpty) {
+          parametrlar['search'] = matn.trim();
         }
+
+        final javob = await ApiService().get(
+          'students?${Uri(queryParameters: parametrlar).query}',
+        );
+
+        // Backend ba'zan paginate() obyektini qaytaradi.
+        final xom = javob['data'];
+        final royxat = xom is Map ? xom['data'] : xom;
+
+        if (royxat is List) {
+          for (final e in royxat) {
+            if (e is Map) natija.add(Map<String, dynamic>.from(e));
+          }
+        }
+      } catch (e) {
+        debugPrint('Talabalarni qidirishda xatolik: $e');
       }
-    } catch (e) {
-      debugPrint('Talabalarni qidirishda xatolik: $e');
+
+      return natija;
     }
 
-    return natija;
-  }
+    /// Talaba tanlash oynasini ochadi.
+    Future<void> _talabaTanlash(RoomModel liveRoom) async {
+      final tanlangan = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _QizTalabaQidiruvSheet(
+          qidir: _talabaQidir,
+          // Xonasi bor talabalar korsatilmaydi - avval ularni
+          // hozirgi xonasidan chiqarish kerak.
+          faqatXonasizlar: true,
+          chiqarib: liveRoom.studentIds,
+        ),
+      );
 
-  /// Talaba tanlash oynasini ochadi.
-  Future<void> _talabaTanlash(RoomModel liveRoom) async {
-    final tanlangan = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _QizTalabaQidiruvSheet(
-        qidir: _talabaQidir,
-        // Xonasi bor talabalar korsatilmaydi - avval ularni
-        // hozirgi xonasidan chiqarish kerak.
-        faqatXonasizlar: true,
-        chiqarib: liveRoom.studentIds,
-      ),
-    );
+      if (tanlangan == null || !mounted) return;
 
-    if (tanlangan == null || !mounted) return;
-
-    setState(() {
-      selectedStudentId = (tanlangan['id'] ?? '').toString();
-      selectedStudentName =
-          (tanlangan['full_name'] ?? tanlangan['fullName'] ?? '').toString();
-    });
-  }
-
+      setState(() {
+        selectedStudentId = (tanlangan['id'] ?? '').toString();
+        selectedStudentName =
+            (tanlangan['full_name'] ?? tanlangan['fullName'] ?? '').toString();
+      });
+    }
 
     return StreamBuilder<RoomModel?>(
       stream: context.read<GirlsRoomProvider>().watchRoom(widget.room.id),
@@ -386,7 +385,7 @@ class _GirlsRoomDetailsScreenState extends State<GirlsRoomDetailsScreen> {
                                           size: 18, color: Colors.white54),
                                       onPressed: () => setState(() {
                                         selectedStudentId = null;
-        selectedStudentName = null;
+                                        selectedStudentName = null;
                                         selectedStudentName = null;
                                       }),
                                     )
@@ -855,9 +854,8 @@ class _QizTalabaQidiruvSheetState extends State<_QizTalabaQidiruvSheet> {
                         itemCount: _natija.length,
                         itemBuilder: (context, i) {
                           final d = _natija[i];
-                          final ism =
-                              (d['full_name'] ?? d['fullName'] ?? '—')
-                                  .toString();
+                          final ism = (d['full_name'] ?? d['fullName'] ?? '—')
+                              .toString();
                           final fakultet = (d['faculty'] ?? '').toString();
                           final kurs = d['course'];
                           final qosh = <String>[
@@ -920,8 +918,7 @@ class _QizTalabaQidiruvSheetState extends State<_QizTalabaQidiruvSheet> {
                                                   fontSize: 11.5,
                                                   color: Colors.white54,
                                                 ),
-                                                overflow:
-                                                    TextOverflow.ellipsis,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
                                             ],
                                           ],

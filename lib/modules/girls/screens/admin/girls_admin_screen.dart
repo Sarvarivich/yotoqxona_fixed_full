@@ -79,7 +79,7 @@ class _GirlsAdminScreenState extends State<GirlsAdminScreen> {
         GirlsNotificationsScreen(currentUser: widget.user),
         GirlsPaymentsScreen(currentUser: widget.user),
         const GirlsReportsScreen(),
-        const IjtimoiyImtiyozlarSahifasi(initialHostel: 'girls'),
+        IjtimoiyImtiyozlarSahifasi(initialHostel: 'girls', currentUser: widget.user),
         if (_isAdminOrSuper)
           GirlsRoleManagementTab(
             scaffoldKey: _scaffoldKey,

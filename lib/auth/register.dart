@@ -496,7 +496,7 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                                       const SizedBox(height: 16),
 
-                                      _FieldLabel('Email manzil yarating !'),
+                                      _FieldLabel('Email manzilingizni kiriting'),
                                       const SizedBox(height: 8),
                                       _AuthField(
                                         controller: _emailController,
@@ -508,9 +508,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                                           if (v == null || v.trim().isEmpty) {
                                             return 'Email kiriting';
                                           }
-                                          if (!v.contains('@') ||
-                                              !v.contains('.')) {
-                                            return 'Noto\'g\'ri email';
+                                          final e = v.trim().toLowerCase();
+                                          if (!RegExp(r'^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$').hasMatch(e)) {
+                                            return "Noto'g'ri email formati";
                                           }
                                           return null;
                                         },

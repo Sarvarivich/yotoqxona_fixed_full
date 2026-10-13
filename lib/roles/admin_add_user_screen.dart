@@ -232,19 +232,12 @@ class _AdminAddUserScreenState extends State<AdminAddUserScreen>
     }
   }
 
-  /// Email: to'g'ri format va universitet domeni.
-  ///
-  /// Faqat @kuhostel.uz (xodimlar) va @ku.uz (talabalar) qabul
-  /// qilinadi. Bu "kuhosel" kabi yozuv xatolarini yaratish paytidayoq
-  /// ushlaydi - aks holda foydalanuvchi keyin kira olmay qolardi.
+  /// Email: to'g'ri format tekshiruvi (barcha turdagi emaillar qabul qilinadi)
   String? _emailTekshir(String? v) {
     final e = (v ?? '').trim().toLowerCase();
     if (e.isEmpty) return 'Emailni kiriting';
     if (!RegExp(r'^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$').hasMatch(e)) {
       return "Email noto'g'ri formatda";
-    }
-    if (!e.endsWith('@kuhostel.uz') && !e.endsWith('@ku.uz')) {
-      return "Email @kuhostel.uz yoki @ku.uz bilan tugashi kerak";
     }
     return null;
   }
