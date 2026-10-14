@@ -71,7 +71,7 @@ class PasswordResetController extends Controller
             ->where('user_id', $user->id)
             ->orderByDesc('created_at')
             ->value('created_at');
-        if ($oxirgi && now()->diffInSeconds($oxirgi) < self::RESEND_COOLDOWN_SEC) {
+        if ($oxirgi && abs(now()->diffInSeconds($oxirgi)) < self::RESEND_COOLDOWN_SEC) {
             return response()->json(['success' => true, 'message' => self::GENERIC]);
         }
 
