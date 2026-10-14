@@ -62,7 +62,10 @@ class PasswordResetController extends Controller
 
         $user = $this->findStudent($request->email, $request->phone);
         if (!$user) {
-            return response()->json(['success' => true, 'message' => self::GENERIC]);
+            return response()->json([
+                'success' => false,
+                'message' => "Kiritilgan email yoki telefon raqam xato. Tekshirib, qaytadan kiriting.",
+            ], 422);
         }
 
         // Juda tez qayta so'rashni cheklash (mutlaq qiymat bilan, Carbon imzosidan qat'i nazar)
