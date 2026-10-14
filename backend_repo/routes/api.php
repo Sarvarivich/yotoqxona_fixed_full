@@ -72,6 +72,22 @@ Route::middleware('throttle:5,1')->prefix('password-reset')->group(function () {
     Route::post('/confirm', [\App\Http\Controllers\Api\PasswordResetController::class, 'confirmReset']);
 });
 
+// Vaqtinchalik diagnostika: Brevo sozlamalarini tekshirish (ishga tushirgandan so'ng o'chiring!)
+// GET /api/debug-brevo
+Route::get('/debug-brevo', function () {
+    $apiKey      = config('services.brevo.api_key');
+    $senderEmail = config('services.brevo.sender_email');
+    $senderName  = config('services.brevo.sender_name');
+    return response()->json([
+        'has_api_key'        => !empty($apiKey),
+        'api_key_prefix'     => $apiKey ? substr($apiKey, 0, 8) . '...' : null,
+        'sender_email'       => $senderEmail ?: null,
+        'sender_name'        => $senderName ?: null,
+        'env_direct_api_key' => !empty(env('BREVO_API_KEY')),
+    ]);
+});
+
+
 // Ro'yxatdan o'tishdan oldin bino tanlash uchun kerak РІР‚вЂќ ochiq qoladi.
 Route::get('/hostels', [HostelController::class, 'index']);
 Route::get('/hostels/{id}', [HostelController::class, 'show']);
