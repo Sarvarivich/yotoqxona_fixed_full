@@ -4,10 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\BrevoMailer;
 use App\Services\PasswordChangeNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -25,8 +25,7 @@ class PasswordResetController extends Controller
 
     /**
      * Email VA telefon bir xil talabaga tegishli bo'lsagina foydalanuvchini qaytaradi.
-     * Telefon solishtirilganda faqat oxirgi 9 ta raqam olinadi
-     * (+998..., 998..., 90 123 45 67 va h.k. bir xil ishlaydi).
+     * Telefon solishtirilganda faqat oxirgi 9 ta raqam olinadi.
      */
     private function findStudent(string $email, string $phone): ?User
     {
@@ -66,7 +65,7 @@ class PasswordResetController extends Controller
             return response()->json(['success' => true, 'message' => self::GENERIC]);
         }
 
-        // Juda tez qayta so'rashni cheklash
+        // Juda tez qayta so'rashni cheklash (mutlaq qiymat bilan, Carbon imzosidan qat'i nazar)
         $oxirgi = DB::table('password_reset_codes')
             ->where('user_id', $user->id)
             ->orderByDesc('created_at')
@@ -95,16 +94,14 @@ class PasswordResetController extends Controller
         ]);
 
         try {
-            // Kod FAQAT bazadagi talaba emailiga yuboriladi
-            Mail::raw(
-                "Parolni tiklash kodi: {$kod}\n\nKod 5 daqiqa amal qiladi. Agar bu so'rovni siz yubormagan bo'lsangiz, xabarni e'tiborsiz qoldiring.",
-                function ($message) use ($user) {
-                    $message->to($user->email)
-                        ->subject("Parolni tiklash kodi");
-                }
+            // Kod FAQAT bazadagi talaba emailiga, Brevo HTTP API orqali yuboriladi
+            BrevoMailer::send(
+                $user->email,
+                'KU Hostel: parolni tiklash kodi',
+                "Parolni tiklash kodi: {$kod}\n\nKod 5 daqiqa amal qiladi. Agar bu so'rovni siz yubormagan bo'lsangiz, xabarni e'tiborsiz qoldiring."
             );
         } catch (\Throwable $e) {
-            Log::error('Parol tiklash email yuborilmadi: ' . $e->getMessage(), ['user_id' => $user->id]);
+            Log::error('Parol tiklash emaili yuborilmadi: ' . $e->getMessage(), ['user_id' => $user->id]);
         }
 
         return response()->json(['success' => true, 'message' => self::GENERIC]);
