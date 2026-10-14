@@ -87,6 +87,37 @@ Route::get('/debug-brevo', function () {
     ]);
 });
 
+// Brevo API ni to'g'ridan test qilish - yuborilgan senderlar va real test
+// GET /api/debug-brevo-full
+Route::get('/debug-brevo-full', function () {
+    $apiKey      = config('services.brevo.api_key');
+    $senderEmail = config('services.brevo.sender_email');
+
+    if (!$apiKey) {
+        return response()->json(['error' => 'API key yo\'q']);
+    }
+
+    // Brevo da tasdiqlangan senderlarni olish
+    $sendersResp = \Illuminate\Support\Facades\Http::withHeaders([
+        'api-key' => $apiKey,
+        'accept'  => 'application/json',
+    ])->get('https://api.brevo.com/v3/senders');
+
+    // Akkaunt ma'lumotlari
+    $accountResp = \Illuminate\Support\Facades\Http::withHeaders([
+        'api-key' => $apiKey,
+        'accept'  => 'application/json',
+    ])->get('https://api.brevo.com/v3/account');
+
+    return response()->json([
+        'sender_email_configured' => $senderEmail,
+        'account_status'          => $accountResp->status(),
+        'account_body'            => $accountResp->json(),
+        'senders_status'          => $sendersResp->status(),
+        'senders_body'            => $sendersResp->json(),
+    ]);
+});
+
 
 // Ro'yxatdan o'tishdan oldin bino tanlash uchun kerak РІР‚вЂќ ochiq qoladi.
 Route::get('/hostels', [HostelController::class, 'index']);
