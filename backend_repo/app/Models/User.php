@@ -49,11 +49,20 @@ class User extends Authenticatable
             'additional_data' => 'array',
             'password' => 'hashed',
             'must_change_password' => 'boolean',
+            'password_changed_at' => 'datetime',
         ];
     }
 
     protected static function booted(): void
     {
+        // Parol har qanday yo'l bilan o'zgarganda (ro'yxatdan o'tish, admin reset,
+        // o'zgartirish, tiklash) oxirgi o'zgarish vaqtini yangilaymiz.
+        static::saving(function (User $user) {
+            if ($user->isDirty('password')) {
+                $user->password_changed_at = now();
+            }
+        });
+
         static::deleting(function (User $user) {
             // 1. Faol xonalar bandligini qayta hisoblash uchun xona ID larini olamiz
             $activeRoomIds = RoomStudent::where('student_id', $user->id)

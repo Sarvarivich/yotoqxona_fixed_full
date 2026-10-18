@@ -66,6 +66,16 @@ class AuthController extends Controller
             ], 403);
         }
 
+        // Talabalar uchun 40 kunlik parol muddati
+        if ($user->role === 'talaba' && !$user->must_change_password) {
+            $muddatTugagan = !$user->password_changed_at
+                || $user->password_changed_at->lt(now()->subDays(40));
+            if ($muddatTugagan) {
+                $user->must_change_password = true;
+                $user->save();
+            }
+        }
+
         // Sanctum API Token yaratish
         $token = $user->createToken('ku_hostel_token')->plainTextToken;
 
@@ -88,7 +98,7 @@ class AuthController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'full_name' => 'required|string|max:255',
-            'email' => 'required|string|email:filter|max:255|unique:users,email',
+            'email' => 'required|string|email|max:255|unique:users,email',
             'password' => 'required|string|min:6',
             'phone' => 'nullable|string|max:30',
             'hostel' => 'required|string|in:boys,girls',
