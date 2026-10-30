@@ -99,7 +99,8 @@ class _AdminScreenState extends State<AdminScreen> {
     super.initState();
     _tabs.addAll([
       Dashboard(
-        hostel: widget.user.hostel ?? 'boys',
+        hostel: _isSuperAdmin ? 'all' : (widget.user.hostel ?? 'boys'),
+        isSuperAdmin: _isSuperAdmin,
       ),
       const UmumiyRoyxatSahifasi(),
       TalabalarList(

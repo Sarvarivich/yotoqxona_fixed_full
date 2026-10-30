@@ -197,6 +197,114 @@ class _IjtimoiyImtiyozlarSahifasiState
     );
   }
 
+  /// Admin/superAdmin uchun: ijtimoiy imtiyoz ma'lumotlarini tahrirlash
+  Future<void> _showEditBenefitDialog(UserModel student) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _EditBenefitDialog(
+        student: student,
+        onSaved: _qaytaYukla,
+      ),
+    );
+  }
+
+  /// Admin/superAdmin uchun: ijtimoiy imtiyoz ma'lumotlarini o'chirish
+  Future<void> _confirmDeleteBenefit(UserModel student) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1730),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delete_outline_rounded,
+                  color: Colors.redAccent, size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                "Imtiyozni o'chirish",
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          "${student.fullName} talabadan ijtimoiy imtiyoz ma'lumotlarini butunlay o'chirishni tasdiqlaysizmi?",
+          style: const TextStyle(color: Color(0xB3FFFFFF), fontSize: 13.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("Bekor qilish",
+                style: TextStyle(color: Color(0x66FFFFFF))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text("O'chirish",
+                style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final api = ApiService();
+        final existingData =
+            Map<String, dynamic>.from(student.additionalData ?? {});
+        existingData['hasSocialBenefit'] = false;
+        existingData['has_social_benefit'] = false;
+        existingData['benefitType'] = null;
+        existingData['lostParentType'] = null;
+        existingData['deathCertificateUrl'] = null;
+        existingData['benefitDocumentUrl'] = null;
+
+        await api.updateStudent(student.id, {
+          'additional_data': existingData,
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  "${student.fullName} uchun ijtimoiy imtiyoz o'chirildi"),
+              backgroundColor: const Color(0xFF6C5CE7),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          _qaytaYukla();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("O'chirishda xatolik: $e"),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -486,6 +594,27 @@ class _IjtimoiyImtiyozlarSahifasiState
                     ],
                   ),
                 ),
+                if (_canAddBenefit) ...[
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined,
+                        color: _C.violet, size: 20),
+                    tooltip: "Tahrirlash",
+                    splashRadius: 18,
+                    padding: const EdgeInsets.all(6),
+                    constraints: const BoxConstraints(),
+                    onPressed: () => _showEditBenefitDialog(user),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded,
+                        color: Colors.redAccent, size: 20),
+                    tooltip: "O'chirish",
+                    splashRadius: 18,
+                    padding: const EdgeInsets.all(6),
+                    constraints: const BoxConstraints(),
+                    onPressed: () => _confirmDeleteBenefit(user),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 12),
@@ -1232,6 +1361,401 @@ class _ToggleButton extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── _EditBenefitDialog ────────────────────────────────────────────
+/// Admin/superAdmin tomonidan ijtimoiy imtiyozga ega talaba ma'lumotlarini
+/// tahrirlash uchun modal dialog.
+class _EditBenefitDialog extends StatefulWidget {
+  final UserModel student;
+  final VoidCallback onSaved;
+
+  const _EditBenefitDialog({
+    required this.student,
+    required this.onSaved,
+  });
+
+  @override
+  State<_EditBenefitDialog> createState() => _EditBenefitDialogState();
+}
+
+class _EditBenefitDialogState extends State<_EditBenefitDialog> {
+  String? _selectedBenefitType;
+  String? _lostParentType; // faqat '1' tur uchun: 'ota' yoki 'ona'
+
+  bool _isSaving = false;
+  String? _errorMsg;
+
+  @override
+  void initState() {
+    super.initState();
+    final data = widget.student.additionalData ?? {};
+    _selectedBenefitType = data['benefitType']?.toString();
+    _lostParentType = data['lostParentType']?.toString();
+  }
+
+  Future<void> _save() async {
+    if (_selectedBenefitType == null) {
+      setState(() => _errorMsg = "Imtiyoz turini tanlang");
+      return;
+    }
+    if (_selectedBenefitType == '1' &&
+        (_lostParentType == null || _lostParentType!.isEmpty)) {
+      setState(() => _errorMsg = "Boquvchi turini tanlang (ota yoki ona)");
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+      _errorMsg = null;
+    });
+
+    try {
+      final api = ApiService();
+      final existingData =
+          Map<String, dynamic>.from(widget.student.additionalData ?? {});
+      existingData['hasSocialBenefit'] = true;
+      existingData['has_social_benefit'] = true;
+      existingData['benefitType'] = _selectedBenefitType;
+      if (_selectedBenefitType == '1') {
+        existingData['lostParentType'] = _lostParentType;
+      } else {
+        existingData.remove('lostParentType');
+        existingData['lostParentType'] = null;
+      }
+
+      await api.updateStudent(widget.student.id, {
+        'additional_data': existingData,
+      });
+
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onSaved();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                "${widget.student.fullName} uchun ijtimoiy imtiyoz muvaffaqiyatli yangilandi"),
+            backgroundColor: const Color(0xFF6C5CE7),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _errorMsg = "Saqlashda xatolik: $e";
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.student;
+    final data = s.additionalData ?? {};
+    final deathCertUrl = data['deathCertificateUrl'] as String?;
+    final benefitDocUrl = data['benefitDocumentUrl'] as String?;
+    final fileUrl = (_selectedBenefitType == '1')
+        ? (deathCertUrl ?? benefitDocUrl)
+        : (benefitDocUrl ?? deathCertUrl);
+
+    return Dialog(
+      backgroundColor: const Color(0xFF1A1730),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Sarlavha ──
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6C5CE7).withOpacity(0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.edit_note_rounded,
+                        color: Color(0xFF6C5CE7), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      "Ijtimoiy imtiyozni tahrirlash",
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded,
+                        color: Color(0x66FFFFFF), size: 20),
+                    onPressed: () => Navigator.of(context).pop(),
+                    splashRadius: 18,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // ── Talaba ma'lumoti kartasi ──
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F0D1A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0x0FFFFFFF)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF6C5CE7).withOpacity(0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        s.fullName.trim().isNotEmpty
+                            ? s.fullName.trim()[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                            color: Color(0xFF6C5CE7),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            s.fullName,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            [
+                              if ((s.faculty ?? '').isNotEmpty) s.faculty!,
+                              if ((s.course ?? '').isNotEmpty) '${s.course}-kurs',
+                            ].join(' · '),
+                            style: const TextStyle(
+                                color: Color(0x66FFFFFF), fontSize: 11.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // ── Imtiyoz turi ──
+              const Text(
+                "Imtiyoz turi",
+                style: TextStyle(
+                    color: Color(0xB3FFFFFF),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F0D1A),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0x0FFFFFFF)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedBenefitType,
+                    hint: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 14),
+                      child: Text("Imtiyoz turini tanlang...",
+                          style: TextStyle(
+                              color: Color(0x66FFFFFF), fontSize: 13)),
+                    ),
+                    isExpanded: true,
+                    dropdownColor: const Color(0xFF1A1730),
+                    icon: const Padding(
+                      padding: EdgeInsets.only(right: 12),
+                      child: Icon(Icons.keyboard_arrow_down_rounded,
+                          color: Color(0xFF6C5CE7)),
+                    ),
+                    items: kBenefitTypes
+                        .map((e) => DropdownMenuItem(
+                              value: e.key,
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 14),
+                                child: Text(
+                                  e.value,
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 13),
+                                ),
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) => setState(() {
+                      _selectedBenefitType = v;
+                      if (v != '1') _lostParentType = null;
+                    }),
+                  ),
+                ),
+              ),
+
+              // Faqat '1'-tur uchun: ota yoki ona
+              if (_selectedBenefitType == '1') ...[
+                const SizedBox(height: 14),
+                const Text(
+                  "Vafot etgan boquvchi",
+                  style: TextStyle(
+                      color: Color(0xB3FFFFFF),
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _RadioTile(
+                        label: "Ota",
+                        value: 'ota',
+                        groupValue: _lostParentType,
+                        onChanged: (v) =>
+                            setState(() => _lostParentType = v),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _RadioTile(
+                        label: "Ona",
+                        value: 'ona',
+                        groupValue: _lostParentType,
+                        onChanged: (v) =>
+                            setState(() => _lostParentType = v),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              if (fileUrl != null && fileUrl.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.description_rounded, size: 16, color: Color(0xFF55EFC4)),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          "Tasdiqlovchi hujjat mavjud",
+                          style: TextStyle(color: Color(0xB3FFFFFF), fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // Xato xabari
+              if (_errorMsg != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded,
+                          color: Colors.redAccent, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMsg!,
+                          style: const TextStyle(
+                              color: Colors.redAccent, fontSize: 12.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 24),
+
+              // ── Tugmalar ──
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xB3FFFFFF),
+                        side: const BorderSide(color: Color(0x33FFFFFF)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text("Bekor qilish",
+                          style: TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isSaving ? null : _save,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6C5CE7),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Text("Saqlash",
+                              style:
+                                  TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

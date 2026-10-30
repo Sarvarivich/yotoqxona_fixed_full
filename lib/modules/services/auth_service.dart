@@ -470,6 +470,13 @@ class AuthService {
       // "[core/no-app]" bilan yashirardi.
       if (context.mounted) {
         Navigator.of(context).pop();
+      }
+
+      if (e.isPasswordExpired) {
+        rethrow;
+      }
+
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: Colors.red,

@@ -4,10 +4,12 @@ import '../models/user_model.dart';
 
 class TalabalarStatistikasi extends StatefulWidget {
   final String hostel;
+  final bool isSuperAdmin;
 
   const TalabalarStatistikasi({
     super.key,
     required this.hostel,
+    this.isSuperAdmin = false,
   });
 
   @override
@@ -21,11 +23,23 @@ class _TalabalarStatistikasiState extends State<TalabalarStatistikasi> {
   int _studentsWithRoom = 0;
   int _studentsWithoutRoom = 0;
   bool _isLoading = true;
+  late String _activeHostel;
 
   @override
   void initState() {
     super.initState();
+    _activeHostel = widget.isSuperAdmin ? 'all' : widget.hostel;
     _loadData();
+  }
+
+  @override
+  void didUpdateWidget(covariant TalabalarStatistikasi oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hostel != widget.hostel ||
+        oldWidget.isSuperAdmin != widget.isSuperAdmin) {
+      _activeHostel = widget.isSuperAdmin ? 'all' : widget.hostel;
+      _loadData();
+    }
   }
 
   Future<void> _loadData() async {
@@ -44,9 +58,12 @@ class _TalabalarStatistikasiState extends State<TalabalarStatistikasi> {
       // oxirgi sahifagacha aylanamiz.
       int sahifa = 1;
       int oxirgi = 1;
+      final shouldFilter = _activeHostel.isNotEmpty && _activeHostel != 'all';
+      final hostelParam = shouldFilter ? '&hostel=$_activeHostel' : '';
+
       do {
         final javob = await api.get(
-          'students?role=talaba&hostel=${widget.hostel}'
+          'students?role=talaba$hostelParam'
           '&per_page=100&page=$sahifa',
         );
 
@@ -104,6 +121,37 @@ class _TalabalarStatistikasiState extends State<TalabalarStatistikasi> {
     if (mounted) setState(() => _isLoading = false);
   }
 
+  Widget _buildHostelFilterChip(String key, String label) {
+    final isSelected = _activeHostel == key;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        if (_activeHostel != key) {
+          setState(() {
+            _activeHostel = key;
+            _isLoading = true;
+          });
+          _loadData();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF6C5CE7) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            color: isSelected ? Colors.white : Colors.grey.shade700,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -114,9 +162,50 @@ class _TalabalarStatistikasiState extends State<TalabalarStatistikasi> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "Talabalar statistikasi",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Talabalar statistikasi",
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      if (widget.isSuperAdmin && _activeHostel == 'all')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            "Barcha talabalar kesimida (o'g'il bolalar va qizlar)",
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (widget.isSuperAdmin)
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildHostelFilterChip('all', 'Barchasi'),
+                        _buildHostelFilterChip('boys', "O'g'il"),
+                        _buildHostelFilterChip('girls', 'Qizlar'),
+                      ],
+                    ),
+                  ),
+              ],
             ),
             SizedBox(height: 16),
             if (_isLoading)

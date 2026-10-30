@@ -9,6 +9,8 @@ import '../roles/talaba_profile_screen.dart';
 import '../modules/girls/screens/admin/girls_admin_screen.dart';
 import 'register.dart';
 import 'parol_tiklash_dialog.dart';
+import 'parol_muddati_dialog.dart';
+import '../modules/services/api_service.dart';
 
 // ─── LoginScreen: loyihaning kirish sahifasi ───────────────────
 // Muammo: login.dart da LoginScreen classi yo'q edi, faqat
@@ -166,6 +168,38 @@ class _LoginScreenState extends State<LoginScreen>
         ),
         (route) => false,
       );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+
+      if (e.isPasswordExpired) {
+        final result = await ParolMuddatiDialog.show(
+          context,
+          email: _emailCtrl.text.trim(),
+          currentPassword: _passwordCtrl.text.trim(),
+          message: e.message,
+        );
+
+        if (result == true && mounted) {
+          _passwordCtrl.clear();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Parolingiz muvaffaqiyatli yangilandi! Endi yangi parolingiz bilan tizimga kiring.",
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);

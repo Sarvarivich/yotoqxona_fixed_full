@@ -28,11 +28,13 @@ class _C {
 class Dashboard extends StatefulWidget {
   final bool showFinancials;
   final String hostel;
+  final bool isSuperAdmin;
 
   const Dashboard({
     super.key,
     this.showFinancials = true,
     this.hostel = 'boys',
+    this.isSuperAdmin = false,
   });
 
   @override
@@ -41,8 +43,7 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   final ApiService _apiService = ApiService();
-  final TextEditingController _announcementController =
-      TextEditingController();
+  final TextEditingController _announcementController = TextEditingController();
 
   int _totalStudents = 0;
 
@@ -84,8 +85,6 @@ class _DashboardState extends State<Dashboard> {
   int _pendingComplaints = 0;
   int _resolvedComplaints = 0;
 
-  // Backend hozir kunlik/haftalik/oylik student statistikani qaytarmaydi.
-  // Shu sababli vaqtincha applications ma'lumotlaridan foydalaniladi.
   int _studentsToday = 0;
   int _studentsThisWeek = 0;
   int _studentsThisMonth = 0;
@@ -123,33 +122,25 @@ class _DashboardState extends State<Dashboard> {
     try {
       final result = await _apiService.getDashboard();
 
-      final dynamic rawData =
-          result['data'] ?? result;
+      final dynamic rawData = result['data'] ?? result;
 
       if (rawData is! Map) {
         throw Exception("Dashboard ma'lumotlari noto'g'ri formatda keldi");
       }
 
-      final Map<String, dynamic> data =
-          Map<String, dynamic>.from(rawData);
+      final Map<String, dynamic> data = Map<String, dynamic>.from(rawData);
 
-      final Map<String, dynamic> students =
-          _map(data['students']);
+      final Map<String, dynamic> students = _map(data['students']);
 
-      final Map<String, dynamic> rooms =
-          _map(data['rooms']);
+      final Map<String, dynamic> rooms = _map(data['rooms']);
 
-      final Map<String, dynamic> applications =
-          _map(data['applications']);
+      final Map<String, dynamic> applications = _map(data['applications']);
 
-      final Map<String, dynamic> payments =
-          _map(data['payments']);
+      final Map<String, dynamic> payments = _map(data['payments']);
 
-      final Map<String, dynamic> complaints =
-          _map(data['complaints']);
+      final Map<String, dynamic> complaints = _map(data['complaints']);
 
-      final Map<String, dynamic> finance =
-          _map(data['finance']);
+      final Map<String, dynamic> finance = _map(data['finance']);
 
       if (!mounted) return;
 
@@ -170,79 +161,57 @@ class _DashboardState extends State<Dashboard> {
 
         _emptyRooms = _toInt(rooms['empty']);
 
-        _partiallyFilledRooms =
-            _toInt(rooms['partially_filled']);
+        _partiallyFilledRooms = _toInt(rooms['partially_filled']);
 
         _fullRooms = _toInt(rooms['full']);
 
-        _occupiedRooms =
-            _partiallyFilledRooms + _fullRooms;
+        _occupiedRooms = _partiallyFilledRooms + _fullRooms;
 
-        _totalCapacity =
-            _toInt(rooms['total_capacity']);
+        _totalCapacity = _toInt(rooms['total_capacity']);
 
-        _occupiedBeds =
-            _toInt(rooms['occupied_beds']);
+        _occupiedBeds = _toInt(rooms['occupied_beds']);
 
-        _availableBeds =
-            _toInt(rooms['available_beds']);
+        _availableBeds = _toInt(rooms['available_beds']);
 
         _occupancyRate =
-            _totalCapacity > 0
-                ? (_occupiedBeds / _totalCapacity) * 100
-                : 0;
+            _totalCapacity > 0 ? (_occupiedBeds / _totalCapacity) * 100 : 0;
 
         // ─── APPLICATIONS ───
-        _totalApplications =
-            _toInt(applications['total']);
+        _totalApplications = _toInt(applications['total']);
 
-        _pendingApplications =
-            _toInt(applications['pending']);
+        _pendingApplications = _toInt(applications['pending']);
 
-        _approvedApplications =
-            _toInt(applications['approved']);
+        _approvedApplications = _toInt(applications['approved']);
 
-        _rejectedApplications =
-            _toInt(applications['rejected']);
+        _rejectedApplications = _toInt(applications['rejected']);
 
         // ─── PAYMENTS ───
-        _totalPayments =
-            _toInt(payments['total_count']);
+        _totalPayments = _toInt(payments['total_count']);
 
-        _approvedPayments =
-            _toInt(payments['approved_count']);
+        _approvedPayments = _toInt(payments['approved_count']);
 
-        _pendingPayments =
-            _toInt(payments['pending_count']);
+        _pendingPayments = _toInt(payments['pending_count']);
 
-        _rejectedPayments =
-            _toInt(payments['rejected_count']);
+        _rejectedPayments = _toInt(payments['rejected_count']);
 
-        _totalIncome =
-            _toDouble(finance['income']);
+        _totalIncome = _toDouble(finance['income']);
 
         // Agar finance income bo'sh bo'lsa payments dan foydalanamiz
         if (_totalIncome == 0) {
-          _totalIncome =
-              _toDouble(payments['total_sum']);
+          _totalIncome = _toDouble(payments['total_sum']);
         }
 
         // ─── FINANCE ───
-        _totalExpense =
-            _toDouble(finance['expense']);
+        _totalExpense = _toDouble(finance['expense']);
 
-        _balance =
-            _toDouble(finance['balance']);
+        _balance = _toDouble(finance['balance']);
 
         // ─── COMPLAINTS ───
-        _totalComplaints =
-            _toInt(complaints['total']);
+        _totalComplaints = _toInt(complaints['total']);
 
-        _pendingComplaints =
-            _toInt(complaints['open']);
+        _pendingComplaints = _toInt(complaints['open']);
 
-        _resolvedComplaints =
-            _toInt(complaints['resolved']);
+        _resolvedComplaints = _toInt(complaints['resolved']);
 
         // ─── TEMPORARY NEW STUDENTS SECTION ───
         // Backend hozir created_today/week/month yubormaydi.
@@ -320,14 +289,14 @@ class _DashboardState extends State<Dashboard> {
     });
 
     try {
-     await _apiService.createAnnouncement(
-  {
-    'title': "Yotoqxona e'loni",
-    'message': text,
-    'target_hostel': widget.hostel,
-    'target_role': 'talaba',
-  },
-);
+      await _apiService.createAnnouncement(
+        {
+          'title': "Yotoqxona e'loni",
+          'message': text,
+          'target_hostel': widget.hostel,
+          'target_role': 'talaba',
+        },
+      );
 
       _announcementController.clear();
 
@@ -405,12 +374,10 @@ class _DashboardState extends State<Dashboard> {
             ),
             LayoutBuilder(
               builder: (context, constraints) {
-                final isWide =
-                    constraints.maxWidth > 700;
+                final isWide = constraints.maxWidth > 700;
 
                 return SingleChildScrollView(
-                  physics:
-                      const AlwaysScrollableScrollPhysics(),
+                  physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(
                     isWide ? 32 : 16,
                     20,
@@ -419,20 +386,14 @@ class _DashboardState extends State<Dashboard> {
                   ),
                   child: Center(
                     child: ConstrainedBox(
-                      constraints:
-                          const BoxConstraints(maxWidth: 1100),
+                      constraints: const BoxConstraints(maxWidth: 1100),
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _buildHeader(),
-
                           const SizedBox(height: 18),
-
                           _buildPeriodSelector(),
-
                           const SizedBox(height: 20),
-
                           if (_isLoading)
                             const Padding(
                               padding: EdgeInsets.all(48),
@@ -447,21 +408,16 @@ class _DashboardState extends State<Dashboard> {
                               _buildErrorCard(),
                               const SizedBox(height: 18),
                             ],
-
                             _buildStatsGrid(
                               constraints.maxWidth,
                             ),
-
                             const SizedBox(height: 22),
-
                             _sectionLabel(
                               "Tushgan arizalar",
                               Icons.person_add_alt_1_rounded,
                               _C.mint,
                             ),
-
                             const SizedBox(height: 4),
-
                             const Text(
                               "Yangi talabalar statistikasi",
                               style: TextStyle(
@@ -469,78 +425,59 @@ class _DashboardState extends State<Dashboard> {
                                 fontSize: 11.5,
                               ),
                             ),
-
                             const SizedBox(height: 10),
-
                             _buildNewStudentsGrid(
                               constraints.maxWidth,
                             ),
-
                             const SizedBox(height: 24),
-
                             _buildAnnouncementCard(),
-
                             const SizedBox(height: 22),
-
                             _sectionLabel(
                               "Bandlik dinamikasi",
                               Icons.donut_large_rounded,
                               _C.orange,
                             ),
-
                             const SizedBox(height: 10),
-
                             _darkFrame(
                               child: BandlikGrafik(
                                 hostel: widget.hostel,
                               ),
                             ),
-
                             const SizedBox(height: 18),
-
                             if (widget.showFinancials) ...[
                               _sectionLabel(
                                 "Daromad hisoboti",
                                 Icons.trending_up_rounded,
                                 _C.teal,
                               ),
-
                               const SizedBox(height: 10),
-
                               _darkFrame(
                                 child: DaromadHisobot(
                                   period: _selectedPeriod,
                                 ),
                               ),
-
                               const SizedBox(height: 18),
                             ],
-
                             _sectionLabel(
                               "Talabalar statistikasi",
                               Icons.bar_chart_rounded,
                               _C.pink,
                             ),
-
                             const SizedBox(height: 10),
-
                             _darkFrame(
                               child: TalabalarStatistikasi(
-                                hostel: widget.hostel,
+                                hostel: widget.isSuperAdmin ? 'all' : widget.hostel,
+                                isSuperAdmin: widget.isSuperAdmin,
                               ),
                             ),
-
                             if (widget.showFinancials) ...[
                               const SizedBox(height: 18),
-
                               _sectionLabel(
                                 "Hisobotni eksport qilish",
                                 Icons.ios_share_rounded,
                                 _C.violet,
                               ),
-
                               const SizedBox(height: 10),
-
                               _darkFrame(
                                 child: HisobotEksport(
                                   hostel: widget.hostel,
@@ -573,8 +510,7 @@ class _DashboardState extends State<Dashboard> {
         ),
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
             Icons.error_outline_rounded,
@@ -584,8 +520,7 @@ class _DashboardState extends State<Dashboard> {
           const SizedBox(width: 10),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   "Statistikani yuklab bo'lmadi",
@@ -658,21 +593,17 @@ class _DashboardState extends State<Dashboard> {
         children: [
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   greeting,
                   style: TextStyle(
-                    color:
-                        Colors.white.withOpacity(0.8),
+                    color: Colors.white.withOpacity(0.8),
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-
                 const SizedBox(height: 6),
-
                 const Text(
                   "Yotoqxona nazorat paneli",
                   style: TextStyle(
@@ -681,20 +612,15 @@ class _DashboardState extends State<Dashboard> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color:
-                        Colors.white.withOpacity(0.15),
-                    borderRadius:
-                        BorderRadius.circular(8),
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     "${_occupancyRate.toStringAsFixed(0)}% bandlik · $_totalStudents talaba",
@@ -708,17 +634,14 @@ class _DashboardState extends State<Dashboard> {
               ],
             ),
           ),
-
           Container(
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color:
-                  Colors.white.withOpacity(0.12),
+              color: Colors.white.withOpacity(0.12),
               shape: BoxShape.circle,
               border: Border.all(
-                color:
-                    Colors.white.withOpacity(0.3),
+                color: Colors.white.withOpacity(0.3),
               ),
             ),
             child: const Icon(
@@ -756,8 +679,7 @@ class _DashboardState extends State<Dashboard> {
     String period,
     String label,
   ) {
-    final isSelected =
-        _selectedPeriod == period;
+    final isSelected = _selectedPeriod == period;
 
     return Expanded(
       child: GestureDetector(
@@ -767,10 +689,8 @@ class _DashboardState extends State<Dashboard> {
           });
         },
         child: AnimatedContainer(
-          duration:
-              const Duration(milliseconds: 200),
-          padding:
-              const EdgeInsets.symmetric(vertical: 10),
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             gradient: isSelected
                 ? const LinearGradient(
@@ -780,15 +700,13 @@ class _DashboardState extends State<Dashboard> {
                     ],
                   )
                 : null,
-            borderRadius:
-                BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(10),
           ),
           alignment: Alignment.center,
           child: Text(
             label,
             style: TextStyle(
-              color:
-                  isSelected ? Colors.white : _C.muted,
+              color: isSelected ? Colors.white : _C.muted,
               fontWeight: FontWeight.w700,
               fontSize: 12.5,
             ),
@@ -808,21 +726,18 @@ class _DashboardState extends State<Dashboard> {
         Icons.groups_rounded,
         _C.teal,
       ),
-
       _StatData(
         "Band xonalar",
         "$_occupiedRooms/$_totalRooms",
         Icons.meeting_room_rounded,
         _C.orange,
       ),
-
       _StatData(
         "Bandlik foizi",
         "${_occupancyRate.toStringAsFixed(1)}%",
         Icons.donut_small_rounded,
         _C.pink,
       ),
-
       _StatData(
         "Jami daromad",
         _formatMoney(_totalIncome),
@@ -833,21 +748,18 @@ class _DashboardState extends State<Dashboard> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) =>
-                        const DaromadTafsilotlari(),
+                    builder: (_) => const DaromadTafsilotlari(),
                   ),
                 );
               }
             : null,
       ),
-
       _StatData(
         "Kutilayotgan",
         "$_pendingComplaints ta",
         Icons.pending_actions_rounded,
         _C.coral,
       ),
-
       _StatData(
         "Hal qilingan",
         "$_resolvedComplaints ta",
@@ -856,15 +768,12 @@ class _DashboardState extends State<Dashboard> {
       ),
     ];
 
-    final crossAxisCount =
-        maxWidth >= 600 ? 3 : 2;
+    final crossAxisCount = maxWidth >= 600 ? 3 : 2;
 
     return GridView.builder(
       shrinkWrap: true,
-      physics:
-          const NeverScrollableScrollPhysics(),
-      gridDelegate:
-          SliverGridDelegateWithFixedCrossAxisCount(
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
@@ -889,21 +798,18 @@ class _DashboardState extends State<Dashboard> {
         Icons.description_rounded,
         _C.pink,
       ),
-
       _StatData(
         "Kutilmoqda",
         "$_pendingApplications ta",
         Icons.hourglass_top_rounded,
         _C.orange,
       ),
-
       _StatData(
         "Tasdiqlangan",
         "$_approvedApplications ta",
         Icons.check_circle_rounded,
         _C.mint,
       ),
-
       _StatData(
         "Rad etilgan",
         "$_rejectedApplications ta",
@@ -912,17 +818,12 @@ class _DashboardState extends State<Dashboard> {
       ),
     ];
 
-    final crossAxisCount =
-        maxWidth >= 980
-            ? 4
-            : (maxWidth >= 600 ? 4 : 2);
+    final crossAxisCount = maxWidth >= 980 ? 4 : (maxWidth >= 600 ? 4 : 2);
 
     return GridView.builder(
       shrinkWrap: true,
-      physics:
-          const NeverScrollableScrollPhysics(),
-      gridDelegate:
-          SliverGridDelegateWithFixedCrossAxisCount(
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
@@ -949,8 +850,7 @@ class _DashboardState extends State<Dashboard> {
         border: Border.all(color: _C.faint),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -958,10 +858,8 @@ class _DashboardState extends State<Dashboard> {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color:
-                      _C.mint.withOpacity(0.16),
-                  borderRadius:
-                      BorderRadius.circular(10),
+                  color: _C.mint.withOpacity(0.16),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
                   Icons.campaign_rounded,
@@ -969,9 +867,7 @@ class _DashboardState extends State<Dashboard> {
                   color: _C.mint,
                 ),
               ),
-
               const SizedBox(width: 10),
-
               const Text(
                 "Talabalarga e'lon yuborish",
                 style: TextStyle(
@@ -982,28 +878,22 @@ class _DashboardState extends State<Dashboard> {
               ),
             ],
           ),
-
           const SizedBox(height: 14),
-
           Container(
             decoration: BoxDecoration(
               color: _C.bgCard2,
-              borderRadius:
-                  BorderRadius.circular(14),
-              border:
-                  Border.all(color: _C.faint),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _C.faint),
             ),
             child: TextField(
-              controller:
-                  _announcementController,
+              controller: _announcementController,
               maxLines: 3,
               style: const TextStyle(
                 color: _C.white,
                 fontSize: 13.5,
               ),
               decoration: InputDecoration(
-                contentPadding:
-                    const EdgeInsets.all(14),
+                contentPadding: const EdgeInsets.all(14),
                 hintText:
                     "Navbatchiliklar yoki ichki tartib qoidalarni shu yerga yozib tarqating...",
                 border: InputBorder.none,
@@ -1014,42 +904,33 @@ class _DashboardState extends State<Dashboard> {
               ),
             ),
           ),
-
           const SizedBox(height: 12),
-
           Align(
             alignment: Alignment.centerRight,
             child: GestureDetector(
-              onTap: _isSendingAnnouncement
-                  ? null
-                  : _sendAnnouncement,
+              onTap: _isSendingAnnouncement ? null : _sendAnnouncement,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(
+                padding: const EdgeInsets.symmetric(
                   horizontal: 18,
                   vertical: 11,
                 ),
                 decoration: BoxDecoration(
-                  gradient:
-                      const LinearGradient(
+                  gradient: const LinearGradient(
                     colors: [
                       _C.purple,
                       _C.violet,
                     ],
                   ),
-                  borderRadius:
-                      BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
-                  mainAxisSize:
-                      MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     if (_isSendingAnnouncement)
                       const SizedBox(
                         width: 16,
                         height: 16,
-                        child:
-                            CircularProgressIndicator(
+                        child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: Colors.white,
                         ),
@@ -1060,17 +941,14 @@ class _DashboardState extends State<Dashboard> {
                         size: 16,
                         color: Colors.white,
                       ),
-
                     const SizedBox(width: 8),
-
                     Text(
                       _isSendingAnnouncement
                           ? "Yuborilmoqda..."
                           : "E'lonni tarqatish",
                       style: const TextStyle(
                         color: Colors.white,
-                        fontWeight:
-                            FontWeight.w700,
+                        fontWeight: FontWeight.w700,
                         fontSize: 13,
                       ),
                     ),
@@ -1125,29 +1003,21 @@ class _DashboardState extends State<Dashboard> {
     return Container(
       decoration: BoxDecoration(
         color: _C.bgCard,
-        borderRadius:
-            BorderRadius.circular(20),
-        border:
-            Border.all(color: _C.faint),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _C.faint),
       ),
       clipBehavior: Clip.antiAlias,
       child: Theme(
-        data:
-            Theme.of(context).copyWith(
+        data: Theme.of(context).copyWith(
           cardColor: _C.bgCard2,
-          scaffoldBackgroundColor:
-              _C.bgCard,
-          colorScheme:
-              Theme.of(context)
-                  .colorScheme
-                  .copyWith(
-                    surface: _C.bgCard2,
-                    primary: _C.violet,
-                  ),
+          scaffoldBackgroundColor: _C.bgCard,
+          colorScheme: Theme.of(context).colorScheme.copyWith(
+                surface: _C.bgCard2,
+                primary: _C.violet,
+              ),
         ),
         child: Padding(
-          padding:
-              const EdgeInsets.all(4),
+          padding: const EdgeInsets.all(4),
           child: child,
         ),
       ),
@@ -1184,33 +1054,25 @@ class _DarkStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tappable =
-        data.onTap != null;
+    final tappable = data.onTap != null;
 
     return Material(
       color: Colors.transparent,
-      borderRadius:
-          BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: data.onTap,
-        borderRadius:
-            BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18),
         child: Container(
-          padding:
-              const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: _C.bgCard,
-            borderRadius:
-                BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: tappable
-                  ? data.color.withOpacity(0.35)
-                  : _C.faint,
+              color: tappable ? data.color.withOpacity(0.35) : _C.faint,
             ),
           ),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
@@ -1218,10 +1080,8 @@ class _DarkStatCard extends StatelessWidget {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color:
-                          data.color.withOpacity(0.16),
-                      borderRadius:
-                          BorderRadius.circular(10),
+                      color: data.color.withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(
                       data.icon,
@@ -1229,15 +1089,12 @@ class _DarkStatCard extends StatelessWidget {
                       color: data.color,
                     ),
                   ),
-
                   const Spacer(),
-
                   if (tappable)
                     Icon(
                       Icons.chevron_right_rounded,
                       size: 18,
-                      color:
-                          data.color.withOpacity(0.7),
+                      color: data.color.withOpacity(0.7),
                     )
                   else
                     Container(
@@ -1248,8 +1105,7 @@ class _DarkStatCard extends StatelessWidget {
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color:
-                                data.color.withOpacity(0.6),
+                            color: data.color.withOpacity(0.6),
                             blurRadius: 6,
                           ),
                         ],
@@ -1257,9 +1113,7 @@ class _DarkStatCard extends StatelessWidget {
                     ),
                 ],
               ),
-
               const Spacer(),
-
               Text(
                 data.value,
                 style: const TextStyle(
@@ -1267,20 +1121,16 @@ class _DarkStatCard extends StatelessWidget {
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
                 ),
-                overflow:
-                    TextOverflow.ellipsis,
+                overflow: TextOverflow.ellipsis,
               ),
-
               const SizedBox(height: 3),
-
               Text(
                 data.title,
                 style: const TextStyle(
                   color: _C.muted,
                   fontSize: 11.5,
                 ),
-                overflow:
-                    TextOverflow.ellipsis,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
@@ -1311,12 +1161,9 @@ class _GlowOrb extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color:
-                  color.withOpacity(0.14),
-              blurRadius:
-                  size * 0.8,
-              spreadRadius:
-                  size * 0.18,
+              color: color.withOpacity(0.14),
+              blurRadius: size * 0.8,
+              spreadRadius: size * 0.18,
             ),
           ],
         ),

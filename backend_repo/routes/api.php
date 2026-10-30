@@ -58,11 +58,13 @@ Route::middleware('throttle:10,1')->group(function () {
 
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/update-expired-password', [AuthController::class, 'updateExpiredPassword']);
 
     // Eski mijozlar uchun /api/auth/... variantlari ham qoldirilgan.
     // Flutter to'liq ko'chirilgach, bu ikkitasini o'chirib tashlang.
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::post('/auth/update-expired-password', [AuthController::class, 'updateExpiredPassword']);
 
 });
 

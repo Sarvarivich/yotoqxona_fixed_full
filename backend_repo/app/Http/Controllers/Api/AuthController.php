@@ -66,15 +66,26 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // Talabalar uchun 40 kunlik parol muddati
-        if ($user->role === 'talaba' && !$user->must_change_password) {
-            $muddatTugagan = !$user->password_changed_at
-                || $user->password_changed_at->lt(now()->subDays(40));
-            if ($muddatTugagan) {
-                $user->must_change_password = true;
-                $user->save();
+        // Superadmindan tashqari barcha rollar uchun 41-kuni (40 kundan oshganda) parol muddati tugaydi
+        if (!$user->isSuperAdmin()) {
+            if ($user->isPasswordExpired()) {
+                if (!$user->must_change_password) {
+                    $user->must_change_password = true;
+                    $user->save();
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'password_expired' => true,
+                    'must_change_password' => true,
+                    'message' => "Siz qo'ygan joriy parolni muddati tugadi.Tizimga qaytdan kirish uchun parolingizni yangilang.",
+                    'email' => $user->email,
+                ], 403);
             }
         }
+
+        // Birinchi kirish vaqtini qayd etish
+        $user->recordFirstLogin();
 
         // Sanctum API Token yaratish
         $token = $user->createToken('ku_hostel_token')->plainTextToken;
@@ -316,13 +327,13 @@ class AuthController extends Controller
             ], 422);
         }
 
-        if (Hash::check($request->new_password, $user->password)) {
+        if ($user->hasUsedPassword($request->new_password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Yangi parol eskisidan farq qilishi kerak.',
+                'message' => 'Siz bu paroldan oldin foydalangansiz. Iltimos, boshqa yangi parol kiriting.',
                 'errors' => [
                     'new_password' => [
-                        'Yangi parol eskisidan farq qilishi kerak.',
+                        'Siz bu paroldan oldin foydalangansiz. Iltimos, boshqa yangi parol kiriting.',
                     ],
                 ],
             ], 422);
@@ -330,6 +341,7 @@ class AuthController extends Controller
 
         $user->password = Hash::make($request->new_password);
         $user->must_change_password = false;
+        $user->password_changed_at = now();
         $user->save();
 
         // Barcha eski tokenlarni bekor qilamiz - agar kimdir
@@ -346,6 +358,70 @@ class AuthController extends Controller
             'message' => 'Parol yangilandi.',
             'token' => $token,
             'data' => $user->fresh(),
+        ]);
+    }
+
+    /**
+     * Muddati tugagan parolni yangilash (ochiq endpoint, token talab qilinmaydi).
+     * Eski parol to'g'ri bo'lishi va yangi parol oldin ishlatilmagan bo'lishi shart.
+     */
+    public function updateExpiredPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|string|email',
+            'current_password' => 'required|string',
+            'new_password' => 'required|string|min:6|confirmed',
+            'new_password_confirmation' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ma\'lumotlar xato kiritildi.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $email = trim(strtolower($request->email));
+        $user = User::where('email', $email)->first();
+
+        if (!$user || !Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Joriy parol noto\'g\'ri.',
+                'errors' => [
+                    'current_password' => ['Joriy parol noto\'g\'ri.'],
+                ],
+            ], 422);
+        }
+
+        if ($user->hasUsedPassword($request->new_password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Siz bu paroldan oldin foydalangansiz. Iltimos, boshqa yangi parol kiriting.',
+                'errors' => [
+                    'new_password' => [
+                        'Siz bu paroldan oldin foydalangansiz. Iltimos, boshqa yangi parol kiriting.',
+                    ],
+                ],
+            ], 422);
+        }
+
+        $user->password = Hash::make($request->new_password);
+        $user->must_change_password = false;
+        $user->password_changed_at = now();
+        $user->save();
+
+        // Barcha mavjud tokenlarni bekor qilamiz
+        $user->tokens()->delete();
+
+        try {
+            PasswordChangeNotifier::notify($user, 'expired_update');
+        } catch (\Throwable $e) {}
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Parolingiz muvaffaqiyatli yangilandi. Yangi parolingiz bilan tizimga kirishingiz mumkin.',
         ]);
     }
 
@@ -386,7 +462,19 @@ class AuthController extends Controller
             ], 400);
         }
 
+        if ($user->hasUsedPassword($request->new_password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Siz bu paroldan oldin foydalangansiz. Iltimos, boshqa yangi parol kiriting.',
+                'errors' => [
+                    'new_password' => ['Siz bu paroldan oldin foydalangansiz. Iltimos, boshqa yangi parol kiriting.'],
+                ],
+            ], 422);
+        }
+
         $user->password = Hash::make($request->new_password);
+        $user->must_change_password = false;
+        $user->password_changed_at = now();
         $user->save();
 
         // Superadminga xabar

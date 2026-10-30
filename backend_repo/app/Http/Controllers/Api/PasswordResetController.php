@@ -216,15 +216,19 @@ class PasswordResetController extends Controller
             return $yaroqsiz;
         }
 
-        if (Hash::check($request->password, $user->password)) {
+        if ($user->hasUsedPassword($request->password)) {
             return response()->json([
                 'success' => false,
-                'message' => "Yangi parol eskisidan farq qilishi kerak.",
+                'message' => "Siz bu paroldan oldin foydalangansiz. Iltimos, boshqa yangi parol kiriting.",
+                'errors' => [
+                    'password' => ["Siz bu paroldan oldin foydalangansiz. Iltimos, boshqa yangi parol kiriting."],
+                ],
             ], 422);
         }
 
         $user->password = Hash::make($request->password);
         $user->must_change_password = false;
+        $user->password_changed_at = now();
         $user->save();
 
         DB::table('password_reset_codes')->where('id', $kod->id)

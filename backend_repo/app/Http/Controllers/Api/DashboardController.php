@@ -19,6 +19,9 @@ class DashboardController extends Controller
     {
         $user = $request->user();
         $hostelFilter = $request->input('hostel');
+        if ($hostelFilter === 'all') {
+            $hostelFilter = null;
+        }
 
         // Talabalar statistikasi
         $studentsQuery = User::where('role', 'talaba');

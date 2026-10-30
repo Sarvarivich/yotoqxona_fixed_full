@@ -1056,6 +1056,53 @@ class _XonalarListState extends State<XonalarList> {
   // ROOM CARD
   // ───────────────────────────────────────────────────────────
 
+  String _formatPrice(num value) {
+    final s = value.toStringAsFixed(0);
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      final posFromEnd = s.length - i;
+      buf.write(s[i]);
+      if (posFromEnd > 1 && posFromEnd % 3 == 1) buf.write(' ');
+    }
+    return buf.toString();
+  }
+
+  Widget _buildAmenityBadge(String amenity) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 9,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: _LC.faint,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(
+          color: _LC.purple.withOpacity(0.12),
+          width: 0.8,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _facilityIcon(amenity),
+            size: 13,
+            color: _LC.purple,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            amenity,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: _LC.ink,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRoomCard(RoomModel room) {
     final available = room.capacity - room.currentOccupants;
 
@@ -1065,10 +1112,12 @@ class _XonalarListState extends State<XonalarList> {
       margin: EdgeInsets.zero,
       elevation: 0,
       color: _LC.card,
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
         side: const BorderSide(
           color: _LC.faint,
+          width: 1.2,
         ),
       ),
       child: InkWell(
@@ -1081,6 +1130,7 @@ class _XonalarListState extends State<XonalarList> {
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
@@ -1136,7 +1186,7 @@ class _XonalarListState extends State<XonalarList> {
                     ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -1165,7 +1215,7 @@ class _XonalarListState extends State<XonalarList> {
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               Row(
                 children: [
                   Expanded(
@@ -1185,43 +1235,59 @@ class _XonalarListState extends State<XonalarList> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               _infoBox(
                 Icons.payments_rounded,
                 'Oylik to‘lov',
-                '${room.pricePerMonth.toStringAsFixed(0)} so‘m',
+                '${_formatPrice(room.pricePerMonth)} so‘m',
               ),
               if (room.amenities.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Text(
-                  'Qulayliklar',
-                  style: TextStyle(
-                    color: _LC.ink,
-                    fontWeight: FontWeight.w800,
-                  ),
+                const SizedBox(height: 14),
+                const Divider(height: 1, color: _LC.faint),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.room_preferences_rounded,
+                      size: 15,
+                      color: _LC.purple,
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Qulayliklar',
+                      style: TextStyle(
+                        color: _LC.ink,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _LC.purple.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${room.amenities.length} ta',
+                        style: const TextStyle(
+                          color: _LC.purple,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: room.amenities
-                      .map(
-                        (amenity) => Chip(
-                          avatar: Icon(
-                            _facilityIcon(amenity),
-                            size: 15,
-                            color: _LC.purple,
-                          ),
-                          label: Text(
-                            amenity,
-                            style: const TextStyle(
-                              fontSize: 11,
-                            ),
-                          ),
-                          backgroundColor: _LC.faint,
-                          side: BorderSide.none,
-                        ),
-                      )
+                      .map((amenity) => _buildAmenityBadge(amenity))
                       .toList(),
                 ),
               ],
@@ -1457,7 +1523,10 @@ class _XonalarListState extends State<XonalarList> {
               ),
             )
           : null,
-      body: Column(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1400),
+          child: Column(
         children: [
           // SEARCH
           Padding(
@@ -1592,43 +1661,76 @@ class _XonalarListState extends State<XonalarList> {
                             ),
                             child: LayoutBuilder(
                               builder: (context, constraints) {
-                                final width = constraints.maxWidth;
-
-                                int columns = 1;
-
-                                if (width >= 1100) {
-                                  columns = 3;
-                                } else if (width >= 700) {
-                                  columns = 2;
-                                }
-
-                                return GridView.builder(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    4,
-                                    16,
-                                    100,
-                                  ),
-                                  itemCount: rooms.length,
-                                  gridDelegate:
-                                      SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: columns,
-                                    crossAxisSpacing: 14,
-                                    mainAxisSpacing: 14,
-                                    childAspectRatio:
-                                        columns == 1 ? 1.45 : 0.95,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    return _buildRoomCard(
-                                      rooms[index],
-                                    );
-                                  },
+                                return _buildRoomsView(
+                                  rooms,
+                                  constraints.maxWidth,
                                 );
                               },
                             ),
                           ),
           ),
         ],
+      ),
+    ),
+  ),
+);
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // RESPONSIVE ROOMS VIEW (PHONE & DESKTOP)
+  // ───────────────────────────────────────────────────────────
+
+  Widget _buildRoomsView(List<RoomModel> rooms, double width) {
+    if (width < 700) {
+      // TELEFON: Har bir xona o'zining tabiiy to'liq balandligini egallaydi
+      return ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
+        itemCount: rooms.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 14),
+        itemBuilder: (context, index) {
+          return _buildRoomCard(rooms[index]);
+        },
+      );
+    }
+
+    // PLANSHET VA KOMPYUTER: Dinamik 2 yoki 3 ustunli Masonry layout
+    final int columns = width >= 1150 ? 3 : 2;
+
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1400),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: List.generate(columns, (colIndex) {
+              final colRooms = [
+                for (int i = colIndex; i < rooms.length; i += columns) rooms[i],
+              ];
+
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: colIndex == 0 ? 0 : 7,
+                    right: colIndex == columns - 1 ? 0 : 7,
+                  ),
+                  child: Column(
+                    children: colRooms
+                        .map(
+                          (room) => Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: _buildRoomCard(room),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
       ),
     );
   }

@@ -352,6 +352,24 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> updateExpiredPassword({
+    required String email,
+    required String currentPassword,
+    required String newPassword,
+    required String newPasswordConfirmation,
+  }) {
+    return post(
+      'auth/update-expired-password',
+      auth: false,
+      body: {
+        'email': email,
+        'current_password': currentPassword,
+        'new_password': newPassword,
+        'new_password_confirmation': newPasswordConfirmation,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> getMe() {
     return get('auth/me');
   }
@@ -872,6 +890,12 @@ class ApiException implements Exception {
     this.statusCode,
     this.data,
   });
+
+  bool get isPasswordExpired =>
+      (statusCode == 403 || statusCode == 422) &&
+      (data?['password_expired'] == true ||
+          data?['must_change_password'] == true ||
+          message.toLowerCase().contains('muddati tugadi'));
 
   @override
   String toString() => message;

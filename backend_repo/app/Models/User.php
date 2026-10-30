@@ -19,6 +19,8 @@ class User extends Authenticatable
         'phone',
         'password',
         'must_change_password',
+        'password_changed_at',
+        'first_login_at',
         'role',
         'faculty',
         'course',
@@ -50,6 +52,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'must_change_password' => 'boolean',
             'password_changed_at' => 'datetime',
+            'first_login_at' => 'datetime',
         ];
     }
 
@@ -60,6 +63,17 @@ class User extends Authenticatable
         static::saving(function (User $user) {
             if ($user->isDirty('password')) {
                 $user->password_changed_at = now();
+            }
+        });
+
+        // Parol o'zgarganda yoki yangi yaratilganda parolni tarix jadvaliga yozamiz
+        static::saved(function (User $user) {
+            if (($user->wasChanged('password') || ($user->wasRecentlyCreated && !empty($user->password))) && !empty($user->password)) {
+                \Illuminate\Support\Facades\DB::table('password_histories')->insert([
+                    'user_id' => $user->id,
+                    'password' => $user->password,
+                    'created_at' => now(),
+                ]);
             }
         });
 
@@ -149,4 +163,68 @@ class User extends Authenticatable
     {
         return $this->hasMany(Notification::class, 'user_id');
     }
+
+    public function isSuperAdmin(): bool
+    {
+        return in_array(strtolower((string)$this->role), ['superadmin', 'super_admin']);
+    }
+
+    /**
+     * Superadmindan tashqari barcha rollar uchun birinchi kirgan
+     * kundan yoki oxirgi parol o'zgargan kundan boshlab 41-kuni
+     * (40 kundan oshganda) parol muddati tugaydi.
+     */
+    public function isPasswordExpired(): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return false;
+        }
+
+        if ($this->must_change_password) {
+            return true;
+        }
+
+        $baseDate = $this->password_changed_at ?? $this->first_login_at;
+        if (!$baseDate) {
+            return false;
+        }
+
+        // 40 kundan o'tgan bo'lsa (41-kuni yoki undan keyin)
+        return (int) $baseDate->diffInDays(now()) >= 40;
+    }
+
+    /**
+     * Yangi kiritilayotgan parol oldin ishlatilganmi?
+     * Joriy parol va password_histories dagi barcha eski parollar bilan tekshiradi.
+     */
+    public function hasUsedPassword(string $plainPassword): bool
+    {
+        if (!empty($this->password) && \Illuminate\Support\Facades\Hash::check($plainPassword, $this->password)) {
+            return true;
+        }
+
+        $histories = \Illuminate\Support\Facades\DB::table('password_histories')
+            ->where('user_id', $this->id)
+            ->pluck('password');
+
+        foreach ($histories as $hashedPassword) {
+            if (\Illuminate\Support\Facades\Hash::check($plainPassword, $hashedPassword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Tizimga birinchi marta kirganda birinchi kirish vaqtini yozib qo'yish
+     */
+    public function recordFirstLogin(): void
+    {
+        if ($this->first_login_at === null) {
+            $this->first_login_at = now();
+            $this->save();
+        }
+    }
 }
+

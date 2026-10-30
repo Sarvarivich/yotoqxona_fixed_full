@@ -101,7 +101,7 @@ class StudentController extends Controller
             $query->where('role', $request->role);
         }
 
-        if ($request->filled('hostel')) {
+        if ($request->filled('hostel') && $request->hostel !== 'all') {
             $query->where('hostel', $request->hostel);
         }
 
@@ -514,7 +514,13 @@ class StudentController extends Controller
             $eski = $mavjud->additional_data;
         }
 
-        $data['additional_data'] = array_merge($eski, $yangi);
+        $merged = array_merge($eski, $yangi);
+        foreach ($merged as $k => $v) {
+            if ($v === null) {
+                unset($merged[$k]);
+            }
+        }
+        $data['additional_data'] = $merged;
         return $data;
     }
 }
