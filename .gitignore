@@ -55,3 +55,6 @@ assets/node_modules/
 *.bak
 tuzat_*.ps1
 analyze.txt
+
+talabalar_royxati.xlsx
+scripts/.venv/
