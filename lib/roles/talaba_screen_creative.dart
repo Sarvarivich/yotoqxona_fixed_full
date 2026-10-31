@@ -6,6 +6,7 @@ import '../modules/models/room_model.dart';
 import '../modules/murojaat/murojaatlar_list.dart';
 
 import 'talaba_tolovlar_screen.dart';
+import 'talaba_yordam_screen.dart';
 import '../auth/hostel_selection_screen.dart';
 
 // ─── Muammo: talaba_screen_creative.dart ichida TolovCheklariScreen
@@ -316,7 +317,15 @@ class _HomeTabState extends State<_HomeTab>
                     const SizedBox(height: 16),
                     const _ActivityCard(),
                     const SizedBox(height: 16),
-                    _QuickActions(onPayTap: widget.onPayTap),
+                    _QuickActions(
+                      onPayTap: widget.onPayTap,
+                      onSupportTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              TalabaYordamScreen(user: widget.user),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 120),
                   ]),
                 ),
@@ -1211,7 +1220,8 @@ class _ActivityCard extends StatelessWidget {
 // ─── Quick Actions ─────────────────────────────────────────────
 class _QuickActions extends StatelessWidget {
   final VoidCallback onPayTap;
-  const _QuickActions({required this.onPayTap});
+  final VoidCallback onSupportTap;
+  const _QuickActions({required this.onPayTap, required this.onSupportTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1235,7 +1245,7 @@ class _QuickActions extends StatelessWidget {
         'Yordam\nmarkazi',
         _C.pink,
         const Color(0x15fd79a8),
-        () {}
+        onSupportTap
       ),
     ];
 
