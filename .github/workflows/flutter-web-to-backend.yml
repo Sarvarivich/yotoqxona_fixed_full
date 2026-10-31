@@ -1,0 +1,58 @@
+name: Build Flutter web into backend
+
+# Flutter web build'ni Laravel backend ichidagi public papkaga yozadi.
+# Railway "web" servisi backend_repo/ dan deploy qiladi, shuning uchun
+# build natijasi shu yerda commit qilinishi kerak.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'web/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: flutter-web-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter paketlarini o'rnatish
+        run: flutter pub get
+
+      - name: Web build
+        run: flutter build web --release
+
+      - name: Build natijasini backend public papkasiga ko'chirish
+        run: |
+          # Laravel fayllari (index.php, .htaccess, robots.txt va h.k.) o'chirilmasin,
+          # faqat Flutter build fayllari ustiga yoziladi.
+          cp -r build/web/. backend_repo/public/
+
+      - name: O'zgarish bo'lsa commit va push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend_repo/public
+          if git diff --cached --quiet; then
+            echo "O'zgarish yo'q"
+            exit 0
+          fi
+          git commit -m "Update Flutter web build [skip ci]"
+          git push
