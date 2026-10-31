@@ -53,7 +53,12 @@ const List<_Faq> _savollar = [
 
 class TalabaYordamScreen extends StatelessWidget {
   final UserModel? user;
-  const TalabaYordamScreen({super.key, required this.user});
+  final bool showAppBar;
+  const TalabaYordamScreen({
+    super.key,
+    required this.user,
+    this.showAppBar = true,
+  });
 
   bool get _canWrite => user != null && user!.id.isNotEmpty;
 
@@ -92,18 +97,32 @@ class TalabaYordamScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _Y.bgBase,
-      appBar: AppBar(
-        backgroundColor: _Y.bgBase,
-        foregroundColor: _Y.white,
-        elevation: 0,
-        title: const Text(
-          'Yordam markazi',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
+      appBar: showAppBar
+          ? AppBar(
+              backgroundColor: _Y.bgBase,
+              foregroundColor: _Y.white,
+              elevation: 0,
+              title: const Text(
+                'Yordam markazi',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            )
+          : null,
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
+          if (!showAppBar)
+            const Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 16),
+              child: Text(
+                'Yordam markazi',
+                style: TextStyle(
+                  color: _Y.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
           _Kartochka(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

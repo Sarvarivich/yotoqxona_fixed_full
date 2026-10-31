@@ -9,6 +9,7 @@ import '../modules/models/room_model.dart';
 import '../modules/services/auth_service.dart';
 import '../auth/login.dart';
 import 'talaba_tolovlar_screen.dart';
+import 'talaba_yordam_screen.dart';
 import '../modules/bildirishnoma/bildirishnomalar_list.dart';
 import '../modules/murojaat/murojaatlar_list.dart';
 import '../modules/widgets/application_stepper.dart';
@@ -151,6 +152,7 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
         studentId: user.id,
         studentName: user.fullName,
       ),
+      TalabaYordamScreen(user: user, showAppBar: false),
     ];
 
     return Scaffold(
@@ -210,6 +212,7 @@ class _TalabaDrawer extends StatelessWidget {
       if (hasRoom) (2, Icons.receipt_long_rounded, "To'lovlar"),
       (3, Icons.person_rounded, 'Profil'),
       (4, Icons.forum_rounded, 'Murojaat'),
+      (5, Icons.support_agent_rounded, 'Yordam markazi'),
     ];
 
     return Drawer(
@@ -434,6 +437,15 @@ class _BoshTab extends StatelessWidget {
                   const SizedBox(height: 12),
                   Row(
                     children: [
+                      Expanded(
+                        child: _QuickActionCard(
+                          icon: Icons.support_agent_rounded,
+                          label: 'Yordam markazi',
+                          color: _C.purple,
+                          onTap: () => onOpenTab(5),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: _QuickActionCard(
                           icon: Icons.forum_rounded,
