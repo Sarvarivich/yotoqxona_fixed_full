@@ -45,6 +45,19 @@ class ComplaintController extends Controller
 
         $complaints = $query->orderBy('created_at', 'desc')->get();
 
+        // Anonim murojaatlarda (is_anonymous=true) mudir/admin tomonidan
+        // student ma'lumotlari yashiriladi. Talabaning o'zi esa o'z
+        // murojaatlarini har doim ko'ra oladi.
+        if ($user->role !== 'talaba') {
+            $complaints = $complaints->map(function ($complaint) {
+                if ($complaint->is_anonymous) {
+                    $complaint->student = null;
+                    $complaint->student_id = null;
+                }
+                return $complaint;
+            });
+        }
+
         return response()->json([
             'success' => true,
             'data' => $complaints,
@@ -77,7 +90,10 @@ class ComplaintController extends Controller
         $activeRoom = $user->activeRoomAssignment;
 
         $complaint = Complaint::create([
-            'student_id' => $request->boolean('is_anonymous') ? null : $user->id,
+            // Anonim bo'lsa ham student_id saqlanadi — talaba o'z murojaatini
+            // ko'rishi uchun. Mudir/admin tomondan is_anonymous=true bo'lganda
+            // ism yashiriladi (response'da filtrlash orqali).
+            'student_id' => $user->id,
             'hostel_id' => $activeRoom ? $activeRoom->room->hostel_id : null,
             'target_role' => $request->target_role ?? 'mudir',
             'title' => $request->title,
