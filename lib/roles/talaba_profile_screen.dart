@@ -11,7 +11,6 @@ import '../auth/login.dart';
 import 'talaba_tolovlar_screen.dart';
 import 'talaba_yordam_screen.dart';
 import '../modules/bildirishnoma/bildirishnomalar_list.dart';
-import '../modules/murojaat/murojaatlar_list.dart';
 import '../modules/widgets/application_stepper.dart';
 import '../modules/services/api_service.dart';
 import '../modules/services/excel_download.dart';
@@ -144,14 +143,6 @@ class _TalabaProfileScreenState extends State<TalabaProfileScreen> {
         roleLabel: roleLabel,
         onEditProfile: () => _openEditProfile(context),
       ),
-      // Talaba yotoqxona mudiriga yoki administratorga murojaat yuborishi
-      // va yuborgan murojaatlarini kuzatib borishi uchun bo'lim
-      MurojaatlarList(
-        isAdmin: false,
-        hostel: user.hostel ?? 'boys',
-        studentId: user.id,
-        studentName: user.fullName,
-      ),
       TalabaYordamScreen(user: user, showAppBar: false),
     ];
 
@@ -211,8 +202,7 @@ class _TalabaDrawer extends StatelessWidget {
       (1, Icons.apartment_rounded, 'Yotoqxona'),
       if (hasRoom) (2, Icons.receipt_long_rounded, "To'lovlar"),
       (3, Icons.person_rounded, 'Profil'),
-      (4, Icons.forum_rounded, 'Murojaat'),
-      (5, Icons.support_agent_rounded, 'Yordam markazi'),
+      (4, Icons.support_agent_rounded, 'Yordam markazi'),
     ];
 
     return Drawer(
@@ -442,15 +432,6 @@ class _BoshTab extends StatelessWidget {
                           icon: Icons.support_agent_rounded,
                           label: 'Yordam markazi',
                           color: _C.purple,
-                          onTap: () => onOpenTab(5),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _QuickActionCard(
-                          icon: Icons.forum_rounded,
-                          label: 'Murojaat yuborish',
-                          color: _C.pink,
                           onTap: () => onOpenTab(4),
                         ),
                       ),

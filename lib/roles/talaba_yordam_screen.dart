@@ -76,19 +76,11 @@ class TalabaYordamScreen extends StatelessWidget {
   void _openMyComplaints(BuildContext context) {
     final u = user!;
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(
-        backgroundColor: _Y.bgBase,
-        appBar: AppBar(
-          backgroundColor: _Y.bgBase,
-          foregroundColor: _Y.white,
-          title: const Text('Mening murojaatlarim'),
-        ),
-        body: MurojaatlarList(
-          isAdmin: false,
-          hostel: u.hostel ?? 'boys',
-          studentId: u.id,
-          studentName: u.fullName,
-        ),
+      builder: (_) => MurojaatlarList(
+        isAdmin: false,
+        hostel: u.hostel ?? 'boys',
+        studentId: u.id,
+        studentName: u.fullName,
       ),
     ));
   }
