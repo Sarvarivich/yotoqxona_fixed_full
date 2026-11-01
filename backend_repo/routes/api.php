@@ -131,6 +131,10 @@ Route::middleware('auth:sanctum')->group(function () use ($ADMINS, $MANAGERS, $F
     Route::post('/delete-user', [AuthController::class, 'deleteUser'])
         ->middleware($ADMINS);
 
+    // Faqat superAdmin: istalgan foydalanuvchining login (email) ini o'zgartiradi
+    Route::post('/admin-change-username', [AuthController::class, 'changeUsername'])
+        ->middleware('role:superAdmin');
+
 
     /*
     |----------------------------------------------------------------------

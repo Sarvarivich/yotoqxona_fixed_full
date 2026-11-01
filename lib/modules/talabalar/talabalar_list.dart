@@ -30,6 +30,7 @@ class TalabalarList extends StatefulWidget {
       required this.isAdmin,
       required this.hostel,
       this.canDelete,
+      this.canChangeUsername = false,
       this.scaffoldKey});
 
   @override
@@ -64,6 +65,9 @@ class _TalabalarListState extends State<TalabalarList> {
   final Set<String> _assignedIds = {};
 
   bool get _canDelete => widget.canDelete ?? widget.isAdmin;
+
+  // Login (email) o'zgartirish faqat superAdmin uchun
+  bool get _canChangeUsername => widget.canChangeUsername;
 
   @override
   void initState() {
@@ -869,11 +873,20 @@ class _TalabalarListState extends State<TalabalarList> {
                   },
                 ),
 
-                // 3. Email (O'zgartirib bo'lmaydi)
+                // 3. Email / login. Faqat superAdmin o'zgartira oladi.
                 ListTile(
                   leading: const Icon(Icons.email_outlined, color: Colors.grey),
-                  title: const Text("Email"),
+                  title: const Text("Email (login)"),
                   subtitle: Text(selectedUser.email),
+                  trailing: _canChangeUsername
+                      ? const Icon(Icons.edit, size: 18, color: Colors.grey)
+                      : null,
+                  onTap: _canChangeUsername
+                      ? () {
+                          Navigator.pop(dialogContext);
+                          _changeUsernameDialog(context, selectedUser);
+                        }
+                      : null,
                 ),
 
                 // 4. Rol ko'rinishi
@@ -960,6 +973,102 @@ class _TalabalarListState extends State<TalabalarList> {
   }
 
   // рџ“ќ FOYDALANUVCHI MA'LUMOTLARINI (FIO, TELEFON) TAHRIRLASH DIALOGI
+  // SUPERADMIN: FOYDALANUVCHINING LOGIN (EMAIL) INI O'ZGARTIRISH DIALOGI
+  void _changeUsernameDialog(BuildContext context, UserModel selectedUser) {
+    final controller = TextEditingController(text: selectedUser.email);
+    final formKey = GlobalKey<FormState>();
+    bool saving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text("Loginni o'zgartirish"),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "${selectedUser.fullName} uchun yangi login (email) kiriting. "
+                  "Foydalanuvchining hozirgi sessiyalari tugaydi va u yangi login bilan kiradi.",
+                  style: const TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: controller,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    labelText: "Yangi login (email)",
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  validator: (value) {
+                    final v = value?.trim() ?? '';
+                    if (v.isEmpty) return "Login kiriting";
+                    final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v);
+                    return ok ? null : "Email formati noto'g'ri";
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text("Bekor qilish"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      final newLogin = controller.text.trim().toLowerCase();
+                      setDialogState(() => saving = true);
+                      try {
+                        await _apiService.adminChangeUsername(
+                          userId: selectedUser.id,
+                          newUsername: newLogin,
+                        );
+                        if (!dialogContext.mounted) return;
+                        Navigator.pop(dialogContext);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Login muvaffaqiyatli o'zgartirildi!"),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                        _loadData();
+                      } catch (e) {
+                        setDialogState(() => saving = false);
+                        if (!dialogContext.mounted) return;
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                            content: Text("Xatolik: $e"),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text("Saqlash", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _editUserField(BuildContext context, UserModel selectedUser,
       String label, String fieldName, String currentValue) {
     final TextEditingController fieldController =

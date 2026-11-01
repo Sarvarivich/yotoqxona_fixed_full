@@ -452,6 +452,20 @@ class ApiService {
     return delete('students/$id');
   }
 
+  /// Faqat superAdmin: foydalanuvchining login (email) ini o'zgartiradi.
+  Future<Map<String, dynamic>> adminChangeUsername({
+    required String userId,
+    required String newUsername,
+  }) {
+    return post(
+      'admin-change-username',
+      body: {
+        'uid': userId,
+        'new_username': newUsername,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> updateStudentPassword({
     required String studentId,
     required String newPassword,

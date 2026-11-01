@@ -106,6 +106,7 @@ class _AdminScreenState extends State<AdminScreen> {
       TalabalarList(
         isAdmin: true,
         canDelete: _canDeleteUsers,
+        canChangeUsername: _isSuperAdmin,
         scaffoldKey: _scaffoldKey,
         hostel: widget.user.hostel ?? 'boys',
       ),

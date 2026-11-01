@@ -528,6 +528,84 @@ class AuthController extends Controller
     }
 
     /**
+     * SuperAdmin tomonidan istalgan foydalanuvchining login nomini (email) o'zgartirish.
+     * Eski login bilan yangi login kerak bo'lmaydi: foydalanuvchining barcha
+     * tokenlari bekor qilinadi, u yangi login bilan qayta kiradi.
+     */
+    public function changeUsername(Request $request)
+    {
+        $uid = $request->input('uid') ?? $request->input('id');
+
+        if (!$uid || !is_string($uid)) {
+            return response()->json(['message' => 'Foydalanuvchi ID si kerak.'], 422);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'new_username' => 'required|string|max:255|email:filter',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $targetUser = $this->findUserByUid($uid);
+
+        if (!$targetUser) {
+            return response()->json(['message' => 'Foydalanuvchi topilmadi.'], 404);
+        }
+
+        if ($request->user()->cannot('changeUsername', $targetUser)) {
+            return response()->json(['message' => 'Bu foydalanuvchining loginini o\'zgartirishga ruxsat yo\'q.'], 403);
+        }
+
+        $newEmail = trim(strtolower($request->input('new_username')));
+
+        $exists = User::where('email', $newEmail)
+            ->where('id', '!=', $targetUser->id)
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bu login boshqa foydalanuvchida mavjud.',
+            ], 422);
+        }
+
+        $oldEmail = $targetUser->email;
+
+        try {
+            DB::transaction(function () use ($targetUser, $newEmail) {
+                $targetUser->email = $newEmail;
+                $targetUser->save();
+                $targetUser->tokens()->delete();
+            });
+        } catch (\Throwable $e) {
+            Log::error('changeUsername xatosi: ' . $e->getMessage(), ['user_id' => $targetUser->id]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Loginni o\'zgartirishda xatolik yuz berdi.',
+            ], 500);
+        }
+
+        Log::info('Login o\'zgartirildi', [
+            'user_id' => $targetUser->id,
+            'old' => $oldEmail,
+            'new' => $newEmail,
+            'by' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Login muvaffaqiyatli o\'zgartirildi.',
+            'email' => $newEmail,
+        ]);
+    }
+
+    /**
      * Admin tomonidan hisobni o'chirish
      */
     public function deleteUser(Request $request)
