@@ -111,6 +111,14 @@ class UserPolicy
     }
 
     /**
+     * Login (email) ni o'zgartirish — faqat superAdmin, istalgan foydalanuvchi uchun.
+     */
+    public function changeUsername(User $actor, User $target): bool
+    {
+        return $actor->role === 'superAdmin';
+    }
+
+    /**
      * Rolni o'zgartirish — eng xavfli amal, faqat superAdmin.
      */
     public function changeRole(User $actor): bool
