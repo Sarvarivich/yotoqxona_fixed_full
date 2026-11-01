@@ -24,6 +24,7 @@ class TalabalarList extends StatefulWidget {
   final bool isAdmin;
   final String hostel;
   final bool? canDelete;
+  final bool canChangeUsername;
   final GlobalKey<ScaffoldState>? scaffoldKey;
   const TalabalarList(
       {super.key,
